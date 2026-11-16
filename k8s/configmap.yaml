@@ -6,6 +6,7 @@ data:
   QUEUE_DB_NAME: tiko
   APPOINTMENTS_DB_NAME: appointments
   PROFILES_DB_NAME: profiles
+  TENANTS_DB_NAME: tenants
   SPRING_DATASOURCE_URL_QUEUE: jdbc:postgresql://postgres:5432/tiko
   SPRING_DATASOURCE_URL_APPOINTMENTS: jdbc:postgresql://postgres:5432/appointments
   SPRING_DATASOURCE_URL_PROFILES: jdbc:postgresql://postgres:5432/profiles
@@ -15,6 +16,7 @@ data:
   QUEUE_SERVICE_URL: http://queue-service:8081
   APPOINTMENT_SERVICE_URL: http://appointment-service:8082
   PROFILE_SERVICE_URL: http://profile-notification-service:8083
+  TENANT_SERVICE_URL: http://tenant-service:8084
   KC_HOSTNAME: http://keycloak.tiko.local
   KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
   KC_HEALTH_ENABLED: "true"

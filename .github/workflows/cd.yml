@@ -40,6 +40,8 @@ jobs:
             context: backend/appointment-service
           - image: profile-notification-service
             context: backend/profile-notification-service
+          - image: tenant-service
+            context: backend/tenant-service
           - image: frontend
             context: frontend
     steps:
@@ -133,7 +135,7 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
         run: |
           image_uri="$(echo "$IMAGE_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
-          for deployment in api-gateway queue-service appointment-service profile-notification-service frontend; do
+          for deployment in api-gateway queue-service appointment-service profile-notification-service tenant-service frontend; do
             kubectl patch deployment "$deployment" -n tiko --type=merge \
               -p '{"spec":{"template":{"spec":{"imagePullSecrets":[{"name":"registry-pull"}]}}}}'
             kubectl set image "deployment/$deployment" -n tiko \

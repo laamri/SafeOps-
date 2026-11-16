@@ -43,6 +43,20 @@ export type Notification = {
   read: boolean;
   createdAt: string;
 };
+export type TenantConfig = {
+  slug: string;
+  name: string;
+  plan: string;
+  status: string;
+  config: string;
+};
+export type TenantBranding = {
+  slug: string;
+  name: string;
+  logoUrl: string | null;
+  primaryColor: string;
+  accentColor: string;
+};
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -91,6 +105,8 @@ export const api = {
   updatePreferences: (input: Omit<Preferences, 'subject'>) => put<Preferences>('/profile/preferences', input),
   notifications: () => request<Notification[]>('/notifications'),
   markNotificationRead: (id: string) => post<Notification>(`/notifications/${encodeURIComponent(id)}/read`),
+  tenantConfig: () => request<TenantConfig>('/tenant/config'),
+  publicBranding: (slug: string) => request<TenantBranding>(`/public/tenants/${encodeURIComponent(slug)}/branding`),
 };
 
 /** "position 1" -> "1er", 2 -> "2e" */

@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import keycloak from './keycloak';
+import { api } from './api';
 
 /** What any component can read with `useAuth()`. */
 type AuthContextValue = {
@@ -37,6 +38,27 @@ function readUser() {
   return { name, email: t.email, username: t.preferred_username, initials };
 }
 
+function isStaffToken() {
+  const parsed = keycloak.tokenParsed as { realm_access?: { roles?: string[] } } | undefined;
+  const roles = parsed?.realm_access?.roles ?? [];
+  return roles.includes('agent') || roles.includes('tenant-admin');
+}
+
+function applyTenantConfig(config: { name: string; config: string }) {
+  try {
+    const parsed = JSON.parse(config.config) as { branding?: { primaryColor?: string; accentColor?: string } };
+    const branding = parsed.branding;
+    if (!branding?.primaryColor || !branding.accentColor) return;
+    const root = document.documentElement;
+    root.style.setProperty('--tiko-primary', branding.primaryColor);
+    root.style.setProperty('--tiko-accent', branding.accentColor);
+    root.dataset.tenantName = config.name;
+    document.title = `${config.name} · tiko`;
+  } catch (error) {
+    console.error('Tenant branding response was invalid', error);
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
@@ -52,7 +74,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     keycloak.onAuthLogout = () => { setAuthenticated(false); setToken(undefined); };
 
     initKeycloak()
-      .then(auth => { setAuthenticated(auth); setToken(keycloak.token); })
+      .then(async auth => {
+        setAuthenticated(auth);
+        setToken(keycloak.token);
+        if (auth && isStaffToken()) {
+          await api.tenantConfig().then(applyTenantConfig).catch(error => {
+            console.error('Tenant branding load failed', error);
+          });
+        }
+      })
       .catch(err => console.error('Keycloak init failed — is the server running and the client configured?', err))
       .finally(() => setReady(true));
   }, []);

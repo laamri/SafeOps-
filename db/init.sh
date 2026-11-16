@@ -12,6 +12,9 @@ set -Eeuo pipefail
 : "${PROFILES_DB_NAME:?PROFILES_DB_NAME must be configured}"
 : "${PROFILES_DB_USER:?PROFILES_DB_USER must be configured}"
 : "${PROFILES_DB_PASSWORD:?PROFILES_DB_PASSWORD must be configured}"
+: "${TENANTS_DB_NAME:?TENANTS_DB_NAME must be configured}"
+: "${TENANTS_DB_USER:?TENANTS_DB_USER must be configured}"
+: "${TENANTS_DB_PASSWORD:?TENANTS_DB_PASSWORD must be configured}"
 
 create_service_database() {
   local db_name="$1"
@@ -44,3 +47,4 @@ SQL
 create_service_database "$QUEUE_DB_NAME" "$QUEUE_DB_USER" "$QUEUE_DB_PASSWORD"
 create_service_database "$APPOINTMENTS_DB_NAME" "$APPOINTMENTS_DB_USER" "$APPOINTMENTS_DB_PASSWORD"
 create_service_database "$PROFILES_DB_NAME" "$PROFILES_DB_USER" "$PROFILES_DB_PASSWORD"
+create_service_database "$TENANTS_DB_NAME" "$TENANTS_DB_USER" "$TENANTS_DB_PASSWORD"

@@ -85,6 +85,9 @@ services:
       PROFILES_DB_NAME: ${PROFILES_DB_NAME}
       PROFILES_DB_USER: ${PROFILES_DB_USER}
       PROFILES_DB_PASSWORD: ${PROFILES_DB_PASSWORD}
+      TENANTS_DB_NAME: ${TENANTS_DB_NAME}
+      TENANTS_DB_USER: ${TENANTS_DB_USER}
+      TENANTS_DB_PASSWORD: ${TENANTS_DB_PASSWORD}
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./db/init.sh:/docker-entrypoint-initdb.d/10-init-databases.sh:ro
@@ -175,6 +178,7 @@ services:
       QUEUE_SERVICE_URL: http://queue-service:8081
       APPOINTMENT_SERVICE_URL: http://appointment-service:8082
       PROFILE_SERVICE_URL: http://profile-notification-service:8083
+      TENANT_SERVICE_URL: http://tenant-service:8084
       SPRING_CONFIG_IMPORT: optional:file:/bootstrap/gateway.properties
     volumes:
       - gateway-secrets:/bootstrap:ro
@@ -200,6 +204,34 @@ services:
         condition: service_healthy
       profile-notification-service:
         condition: service_healthy
+      tenant-service:
+        condition: service_healthy
+
+  tenant-service:
+    build: ./backend/tenant-service
+    environment:
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/${TENANTS_DB_NAME}"
+      SPRING_DATASOURCE_USERNAME: ${TENANTS_DB_USER}
+      SPRING_DATASOURCE_PASSWORD: ${TENANTS_DB_PASSWORD}
+    tmpfs:
+      - /tmp
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    cpus: 0.75
+    restart: unless-stopped
+    networks:
+      - backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8084/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 40s
 
   frontend:
     build:

@@ -11,6 +11,7 @@ resources:
   - queue-service.yaml
   - appointment-service.yaml
   - profile-notification-service.yaml
+  - tenant-service.yaml
   - api-gateway.yaml
   - frontend.yaml
   - ingress.yaml
