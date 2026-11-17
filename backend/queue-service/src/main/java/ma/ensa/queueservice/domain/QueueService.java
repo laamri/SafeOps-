@@ -57,6 +57,9 @@ public class QueueService {
     public TicketView takeTicket(CurrentUser user, Long queueId) {
         ServiceQueue queue = queues.findByIdForUpdate(queueId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown queue " + queueId));
+        if (!queue.isOpen()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "this queue is closed");
+        }
         if (tickets.existsByQueueIdAndOwnerSubjectAndStatusIn(queueId, user.subject(), ACTIVE)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "you already hold a ticket in this queue");
         }
@@ -97,10 +100,21 @@ public class QueueService {
         user.requireStaff();
         ServiceQueue queue = queues.findByIdForUpdate(queueId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown queue " + queueId));
+        if (!queue.isOpen()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "this queue is closed");
+        }
         tickets.findByQueueIdAndStatusOrderByNumberAsc(queueId, TicketStatus.CALLED)
                 .forEach(Ticket::serve);
         tickets.findFirstByQueueIdAndStatusOrderByNumberAsc(queueId, TicketStatus.WAITING)
                 .ifPresent(Ticket::call);
+        return counterView(queue);
+    }
+
+    public CounterView setOpen(CurrentUser user, Long queueId, boolean open) {
+        user.requireStaff();
+        ServiceQueue queue = queues.findByIdForUpdate(queueId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown queue " + queueId));
+        queue.setOpen(open);
         return counterView(queue);
     }
 
@@ -162,7 +176,7 @@ public class QueueService {
     private QueueView toView(ServiceQueue q) {
         long waiting = tickets.countByQueueIdAndStatus(q.getId(), TicketStatus.WAITING);
         return new QueueView(q.getId(), q.getName(), q.getPrefix(), q.getCounter(),
-                waiting, waiting * q.getAvgServiceMinutes());
+                waiting, waiting * q.getAvgServiceMinutes(), q.isOpen());
     }
 
     private TicketView toView(Ticket t) {

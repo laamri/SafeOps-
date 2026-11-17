@@ -5,12 +5,14 @@ import ma.ensa.queueservice.domain.QueueService;
 import ma.ensa.queueservice.security.CurrentUser;
 import ma.ensa.queueservice.web.Views.CounterView;
 import ma.ensa.queueservice.web.Views.EstablishmentView;
+import ma.ensa.queueservice.web.Views.QueueStatusRequest;
 import ma.ensa.queueservice.web.Views.TakeTicketRequest;
 import ma.ensa.queueservice.web.Views.TicketView;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -79,6 +81,12 @@ public class QueueController {
     @PostMapping("/queues/{id}/call-next")
     public CounterView callNext(CurrentUser user, @PathVariable Long id) {
         return service.callNext(user, id);
+    }
+
+    @PutMapping("/queues/{id}/status")
+    public CounterView setStatus(CurrentUser user, @PathVariable Long id,
+                                 @Valid @RequestBody QueueStatusRequest request) {
+        return service.setOpen(user, id, request.open());
     }
 
     @PostMapping("/tickets/{id}/served")

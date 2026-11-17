@@ -4,7 +4,7 @@ import keycloak from './keycloak';
 // to the api-gateway, which verifies the token and routes to the queue-service.
 const BASE = import.meta.env.VITE_API_BASE_URL ?? '';
 
-export type Queue = { id: number; name: string; prefix: string; counter: string; waiting: number; estimatedWaitMinutes: number };
+export type Queue = { id: number; name: string; prefix: string; counter: string; waiting: number; estimatedWaitMinutes: number; open: boolean };
 export type Establishment = {
   id: string; name: string; category: string; city: string; shortName: string; color: string; tint: string;
   address: string; opensAt: string; closesAt: string; waiting: number; estimatedWaitMinutes: number; queues: Queue[];

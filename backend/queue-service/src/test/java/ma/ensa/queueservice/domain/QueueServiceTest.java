@@ -104,4 +104,65 @@ class QueueServiceTest {
         assertEquals(403, exception.getStatusCode().value());
         verify(tickets, never()).save(any(Ticket.class));
     }
+
+    @Test
+    void aClosedQueueRefusesNewTickets() {
+        queue.setOpen(false);
+        when(queues.findByIdForUpdate(queue.getId())).thenReturn(Optional.of(queue));
+
+        var exception = assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                () -> service.takeTicket(new CurrentUser("client-1", "client", Set.of()), queue.getId()));
+
+        assertEquals(409, exception.getStatusCode().value());
+        verify(tickets, never()).save(any(Ticket.class));
+    }
+
+    @Test
+    void aClosedQueueRefusesCallNext() {
+        queue.setOpen(false);
+        when(queues.findByIdForUpdate(queue.getId())).thenReturn(Optional.of(queue));
+
+        var exception = assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                () -> service.callNext(agent, queue.getId()));
+
+        assertEquals(409, exception.getStatusCode().value());
+        verify(tickets, never()).findFirstByQueueIdAndStatusOrderByNumberAsc(any(), any());
+    }
+
+    @Test
+    void aCalledTicketCanStillBeServedWhileTheQueueIsClosed() {
+        queue.setOpen(false);
+        Ticket called = new Ticket(queue, 1, "client-1", "Client");
+        called.call();
+        when(tickets.findById(called.getId())).thenReturn(Optional.of(called));
+
+        service.serve(agent, called.getId());
+
+        assertEquals(TicketStatus.SERVED, called.getStatus());
+    }
+
+    @Test
+    void staffCanCloseAndReopenAQueue() {
+        when(queues.findByIdForUpdate(queue.getId())).thenReturn(Optional.of(queue));
+        when(tickets.findByQueueIdAndStatusOrderByNumberAsc(queue.getId(), TicketStatus.CALLED))
+                .thenReturn(List.of());
+
+        assertEquals(false, service.setOpen(agent, queue.getId(), false).queue().open());
+        assertEquals(false, queue.isOpen());
+
+        assertEquals(true, service.setOpen(agent, queue.getId(), true).queue().open());
+        assertEquals(true, queue.isOpen());
+    }
+
+    @Test
+    void reopeningAQueueAllowsTicketsAgain() {
+        queue.setOpen(false);
+        when(queues.findByIdForUpdate(queue.getId())).thenReturn(Optional.of(queue));
+        when(tickets.save(any(Ticket.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.setOpen(agent, queue.getId(), true);
+        var ticket = service.takeTicket(new CurrentUser("client-1", "client", Set.of()), queue.getId());
+
+        assertEquals(TicketStatus.WAITING, ticket.status());
+    }
 }

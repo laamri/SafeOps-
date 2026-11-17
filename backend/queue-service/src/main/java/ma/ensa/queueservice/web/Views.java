@@ -38,7 +38,8 @@ public final class Views {
             String prefix,
             String counter,
             long waiting,
-            long estimatedWaitMinutes
+            long estimatedWaitMinutes,
+            boolean open
     ) {
     }
 
@@ -74,6 +75,9 @@ public final class Views {
     }
 
     public record TakeTicketRequest(@jakarta.validation.constraints.NotNull Long queueId) {
+    }
+
+    public record QueueStatusRequest(@jakarta.validation.constraints.NotNull Boolean open) {
     }
 
     /**
