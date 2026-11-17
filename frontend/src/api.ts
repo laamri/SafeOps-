@@ -21,6 +21,7 @@ export type Appointment = {
   id: string;
   ownerSubject: string;
   establishmentId: string;
+  organizationId: string;
   queueId: number;
   startsAt: string;
   reason: string;
@@ -88,6 +89,10 @@ export const api = {
   createAppointment: (input: Pick<Appointment, 'establishmentId' | 'queueId' | 'startsAt' | 'reason'>) =>
     post<Appointment>('/appointments', input),
   cancelAppointment: (id: string) => post<Appointment>(`/appointments/${encodeURIComponent(id)}/cancel`),
+  tenantAppointments: (establishmentId: string) =>
+    request<Appointment[]>(`/appointments?establishmentId=${encodeURIComponent(establishmentId)}`),
+  completeAppointment: (id: string) => post<Appointment>(`/appointments/${encodeURIComponent(id)}/complete`),
+  noShowAppointment: (id: string) => post<Appointment>(`/appointments/${encodeURIComponent(id)}/no-show`),
   preferences: () => request<Preferences>('/profile/preferences'),
   updatePreferences: (input: Omit<Preferences, 'subject'>) => put<Preferences>('/profile/preferences', input),
   notifications: () => request<Notification[]>('/notifications'),
