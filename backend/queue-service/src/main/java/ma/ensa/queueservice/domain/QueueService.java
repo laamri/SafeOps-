@@ -90,7 +90,9 @@ public class QueueService {
     @Transactional(readOnly = true)
     public CounterView counter(CurrentUser user, Long queueId) {
         user.requireStaff();
-        return counterView(queue(queueId));
+        ServiceQueue queue = queue(queueId);
+        requireSite(user, queue);
+        return counterView(queue);
     }
 
     /**
@@ -100,6 +102,7 @@ public class QueueService {
         user.requireStaff();
         ServiceQueue queue = queues.findByIdForUpdate(queueId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown queue " + queueId));
+        requireSite(user, queue);
         if (!queue.isOpen()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "this queue is closed");
         }
@@ -114,6 +117,7 @@ public class QueueService {
         user.requireStaff();
         ServiceQueue queue = queues.findByIdForUpdate(queueId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown queue " + queueId));
+        requireSite(user, queue);
         queue.setOpen(open);
         return counterView(queue);
     }
@@ -121,6 +125,7 @@ public class QueueService {
     public CounterView serve(CurrentUser user, UUID ticketId) {
         user.requireStaff();
         Ticket ticket = ticket(ticketId);
+        requireSite(user, ticket.getQueue());
         ticket.serve();
         return counterView(ticket.getQueue());
     }
@@ -128,11 +133,16 @@ public class QueueService {
     public CounterView noShow(CurrentUser user, UUID ticketId) {
         user.requireStaff();
         Ticket ticket = ticket(ticketId);
+        requireSite(user, ticket.getQueue());
         ticket.noShow();
         return counterView(ticket.getQueue());
     }
 
     // ---------------------------------------------------------------- mapping
+
+    private void requireSite(CurrentUser user, ServiceQueue queue) {
+        user.requireSite(queue.getEstablishment().getOrganizationId());
+    }
 
     private Ticket ticket(UUID id) {
         return tickets.findById(id)

@@ -24,7 +24,7 @@ class QueueServiceTest {
     private QueueService service;
     private ServiceQueue queue;
 
-    private final CurrentUser agent = new CurrentUser("agent-1", "agent", Set.of("agent"));
+    private final CurrentUser agent = new CurrentUser("agent-1", "agent", Set.of("agent"), Set.of("clinic"));
 
     @BeforeEach
     void setUp() {
@@ -70,7 +70,7 @@ class QueueServiceTest {
         when(tickets.findById(called.getId())).thenReturn(Optional.of(called));
 
         assertThrows(TicketTransitionException.class,
-                () -> service.cancel(new CurrentUser("client-1", "client", Set.of()), called.getId()));
+                () -> service.cancel(new CurrentUser("client-1", "client", Set.of(), Set.of()), called.getId()));
 
         assertEquals(TicketStatus.CALLED, called.getStatus());
     }
@@ -99,7 +99,7 @@ class QueueServiceTest {
         when(tickets.findById(called.getId())).thenReturn(Optional.of(called));
 
         var exception = assertThrows(org.springframework.web.server.ResponseStatusException.class,
-                () -> service.serve(new CurrentUser("client-1", "client", Set.of()), called.getId()));
+                () -> service.serve(new CurrentUser("client-1", "client", Set.of(), Set.of()), called.getId()));
 
         assertEquals(403, exception.getStatusCode().value());
         verify(tickets, never()).save(any(Ticket.class));
@@ -111,7 +111,7 @@ class QueueServiceTest {
         when(queues.findByIdForUpdate(queue.getId())).thenReturn(Optional.of(queue));
 
         var exception = assertThrows(org.springframework.web.server.ResponseStatusException.class,
-                () -> service.takeTicket(new CurrentUser("client-1", "client", Set.of()), queue.getId()));
+                () -> service.takeTicket(new CurrentUser("client-1", "client", Set.of(), Set.of()), queue.getId()));
 
         assertEquals(409, exception.getStatusCode().value());
         verify(tickets, never()).save(any(Ticket.class));
@@ -161,7 +161,7 @@ class QueueServiceTest {
         when(tickets.save(any(Ticket.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         service.setOpen(agent, queue.getId(), true);
-        var ticket = service.takeTicket(new CurrentUser("client-1", "client", Set.of()), queue.getId());
+        var ticket = service.takeTicket(new CurrentUser("client-1", "client", Set.of(), Set.of()), queue.getId());
 
         assertEquals(TicketStatus.WAITING, ticket.status());
     }
