@@ -2,7 +2,6 @@ package ma.ensa.queueservice.web;
 
 import jakarta.validation.Valid;
 import ma.ensa.queueservice.domain.QueueService;
-import ma.ensa.queueservice.domain.TicketStatus;
 import ma.ensa.queueservice.security.CurrentUser;
 import ma.ensa.queueservice.web.Views.CounterView;
 import ma.ensa.queueservice.web.Views.EstablishmentView;
@@ -84,11 +83,11 @@ public class QueueController {
 
     @PostMapping("/tickets/{id}/served")
     public CounterView served(CurrentUser user, @PathVariable UUID id) {
-        return service.close(user, id, TicketStatus.SERVED);
+        return service.serve(user, id);
     }
 
     @PostMapping("/tickets/{id}/no-show")
     public CounterView noShow(CurrentUser user, @PathVariable UUID id) {
-        return service.close(user, id, TicketStatus.NO_SHOW);
+        return service.noShow(user, id);
     }
 }

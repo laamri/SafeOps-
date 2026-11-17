@@ -65,13 +65,30 @@ public class Ticket {
     }
 
     public void call() {
-        status = TicketStatus.CALLED;
+        moveTo(TicketStatus.WAITING, TicketStatus.CALLED);
         calledAt = Instant.now();
     }
 
-    public void close(TicketStatus outcome) {
-        status = outcome;
+    public void cancel() {
+        moveTo(TicketStatus.WAITING, TicketStatus.CANCELLED);
         closedAt = Instant.now();
+    }
+
+    public void serve() {
+        moveTo(TicketStatus.CALLED, TicketStatus.SERVED);
+        closedAt = Instant.now();
+    }
+
+    public void noShow() {
+        moveTo(TicketStatus.CALLED, TicketStatus.NO_SHOW);
+        closedAt = Instant.now();
+    }
+
+    private void moveTo(TicketStatus required, TicketStatus next) {
+        if (status != required) {
+            throw new TicketTransitionException(code, status, next);
+        }
+        status = next;
     }
 
     public UUID getId() { return id; }

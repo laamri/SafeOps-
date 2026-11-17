@@ -78,10 +78,7 @@ public class QueueService {
 
     public TicketView cancel(CurrentUser user, UUID id) {
         Ticket ticket = owned(user, id);
-        if (ticket.getStatus() != TicketStatus.WAITING) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "only a waiting ticket can be cancelled");
-        }
-        ticket.close(TicketStatus.CANCELLED);
+        ticket.cancel();
         return toView(ticket);
     }
 
@@ -101,24 +98,32 @@ public class QueueService {
         ServiceQueue queue = queues.findByIdForUpdate(queueId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown queue " + queueId));
         tickets.findByQueueIdAndStatusOrderByNumberAsc(queueId, TicketStatus.CALLED)
-                .forEach(current -> current.close(TicketStatus.SERVED));
+                .forEach(Ticket::serve);
         tickets.findFirstByQueueIdAndStatusOrderByNumberAsc(queueId, TicketStatus.WAITING)
                 .ifPresent(Ticket::call);
         return counterView(queue);
     }
 
-    public CounterView close(CurrentUser user, UUID ticketId, TicketStatus outcome) {
+    public CounterView serve(CurrentUser user, UUID ticketId) {
         user.requireStaff();
-        Ticket ticket = tickets.findById(ticketId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown ticket"));
-        if (!ticket.isActive()) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "ticket is already closed");
-        }
-        ticket.close(outcome);
+        Ticket ticket = ticket(ticketId);
+        ticket.serve();
+        return counterView(ticket.getQueue());
+    }
+
+    public CounterView noShow(CurrentUser user, UUID ticketId) {
+        user.requireStaff();
+        Ticket ticket = ticket(ticketId);
+        ticket.noShow();
         return counterView(ticket.getQueue());
     }
 
     // ---------------------------------------------------------------- mapping
+
+    private Ticket ticket(UUID id) {
+        return tickets.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown ticket"));
+    }
 
     private Ticket owned(CurrentUser user, UUID id) {
         return tickets.findById(id)

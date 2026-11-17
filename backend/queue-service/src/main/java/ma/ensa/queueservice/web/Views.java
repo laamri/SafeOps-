@@ -75,4 +75,11 @@ public final class Views {
 
     public record TakeTicketRequest(@jakarta.validation.constraints.NotNull Long queueId) {
     }
+
+    /**
+     * Same shape as the appointment-service error body, so the frontend can read
+     * {@code message} for every 4xx from the gateway.
+     */
+    public record ApiError(java.time.Instant timestamp, int status, String error, String message, String path) {
+    }
 }
