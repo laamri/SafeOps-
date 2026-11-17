@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * What the gateway actually needs out of a verified token: who the caller is and what they
@@ -25,6 +26,8 @@ public record AuthenticatedUser(
         String clientId,
         Set<String> realmRoles,
         Map<String, Set<String>> clientRoles,
+        Set<String> orgIds,
+        Set<String> siteIds,
         long expiresAt
 ) {
 
@@ -43,6 +46,26 @@ public record AuthenticatedUser(
             }
         }
 
+        Set<String> orgIds = new TreeSet<>();
+        Set<String> siteIds = new TreeSet<>();
+        for (String group : payload.groups()) {
+            if (group == null) {
+                continue;
+            }
+            String path = group.startsWith("/") ? group.substring(1) : group;
+            String[] parts = path.split("/");
+            // Slice 1: /tenants/{id} means organisation and site are the same id.
+            if (parts.length == 2 && "tenants".equals(parts[0]) && !parts[1].isBlank()) {
+                orgIds.add(parts[1]);
+                siteIds.add(parts[1]);
+            // Future shape: /tenants/{org}/sites/{site}.
+            } else if (parts.length == 4 && "tenants".equals(parts[0])
+                    && "sites".equals(parts[2]) && !parts[1].isBlank() && !parts[3].isBlank()) {
+                orgIds.add(parts[1]);
+                siteIds.add(parts[3]);
+            }
+        }
+
         return new AuthenticatedUser(
                 payload.sub(),
                 payload.preferred_username(),
@@ -50,6 +73,8 @@ public record AuthenticatedUser(
                 payload.azp(),
                 realmRoles,
                 Map.copyOf(clientRoles),
+                Set.copyOf(orgIds),
+                Set.copyOf(siteIds),
                 payload.exp() == null ? 0L : payload.exp());
     }
 
@@ -68,6 +93,14 @@ public record AuthenticatedUser(
 
     public boolean hasClientRole(String client, String role) {
         return clientRoles.getOrDefault(client, Set.of()).contains(role);
+    }
+
+    public boolean hasOrganization(String organizationId) {
+        return organizationId != null && orgIds.contains(organizationId);
+    }
+
+    public boolean hasSite(String siteId) {
+        return siteId != null && siteIds.contains(siteId);
     }
 
     /**
