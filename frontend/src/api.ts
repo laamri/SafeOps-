@@ -80,6 +80,7 @@ export const api = {
   ticket: (id: string) => request<Ticket>(`/tickets/${encodeURIComponent(id)}`),
   cancelTicket: (id: string) => post<Ticket>(`/tickets/${encodeURIComponent(id)}/cancel`),
   counter: (queueId: number) => request<Counter>(`/queues/${queueId}/counter`),
+  setQueueOpen: (queueId: number, open: boolean) => put<Counter>(`/queues/${queueId}/status`, { open }),
   callNext: (queueId: number) => post<Counter>(`/queues/${queueId}/call-next`),
   served: (ticketId: string) => post<Counter>(`/tickets/${encodeURIComponent(ticketId)}/served`),
   noShow: (ticketId: string) => post<Counter>(`/tickets/${encodeURIComponent(ticketId)}/no-show`),
