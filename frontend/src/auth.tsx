@@ -1,11 +1,26 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import keycloak from './keycloak';
 
+/**
+ * The caller as the token describes them. `roles` are Keycloak realm roles and `sites` the
+ * tenant ids from the `groups` claim (/tenants/clinic), the same values the gateway forwards
+ * downstream. They are used to pick the establishment a staff screen may show - never to
+ * replace the server-side check, which still refuses anything outside the caller's site.
+ */
+export type AuthUser = {
+  name: string;
+  email?: string;
+  username?: string;
+  initials: string;
+  roles: string[];
+  sites: string[];
+};
+
 /** What any component can read with `useAuth()`. */
 type AuthContextValue = {
   ready: boolean;              // false while we are still talking to Keycloak at startup
   authenticated: boolean;      // true when the user is logged in
-  user: { name: string; email?: string; username?: string; initials: string } | null;
+  user: AuthUser | null;
   token?: string;              // access token, send it to your API as "Authorization: Bearer <token>"
   login: (redirectPath?: string) => void;
   register: () => void;
@@ -29,12 +44,28 @@ function initKeycloak() {
   return initPromise;
 }
 
-function readUser() {
-  const t = keycloak.tokenParsed as Record<string, string> | undefined;
+/** Tenant ids from the group paths the gateway also understands: /tenants/{id}. */
+function readSites(groups: unknown): string[] {
+  if (!Array.isArray(groups)) return [];
+  return groups.flatMap(group => {
+    if (typeof group !== 'string') return [];
+    const parts = group.replace(/^\/+/, '').split('/');
+    if (parts.length === 2 && parts[0] === 'tenants') return [parts[1]];
+    if (parts.length === 4 && parts[0] === 'tenants' && parts[2] === 'sites') return [parts[3]];
+    return [];
+  });
+}
+
+function readUser(): AuthUser | null {
+  const t = keycloak.tokenParsed as Record<string, unknown> | undefined;
   if (!t) return null;
-  const name = t.name || t.preferred_username || 'Utilisateur';
+  const name = (t.name as string) || (t.preferred_username as string) || 'Utilisateur';
   const initials = name.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
-  return { name, email: t.email, username: t.preferred_username, initials };
+  const realmAccess = t.realm_access as { roles?: unknown } | undefined;
+  const roles = Array.isArray(realmAccess?.roles)
+    ? (realmAccess!.roles as unknown[]).filter((r): r is string => typeof r === 'string')
+    : [];
+  return { name, email: t.email as string | undefined, username: t.preferred_username as string | undefined, initials, roles, sites: readSites(t.groups) };
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
