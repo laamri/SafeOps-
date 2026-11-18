@@ -39,7 +39,7 @@ services:
   keycloak-init:
     image: quay.io/keycloak/keycloak:26.7.5
     entrypoint: ["/bin/bash", "/bootstrap.sh"]
-    # Root is required only to set the gateway-owned secret file on the named volume.
+    # Root is required only to set each service's secret file on its own named volume.
     user: "0:0"
     environment:
       KC_URL: http://keycloak:8080
@@ -54,6 +54,7 @@ services:
     volumes:
       - ./keycloak/bootstrap.sh:/bootstrap.sh:ro
       - gateway-secrets:/bootstrap
+      - staff-admin-secrets:/staff-admin-bootstrap
     tmpfs:
       - /tmp
     read_only: true
@@ -173,7 +174,7 @@ services:
       TOKEN_JWKS_URL: http://keycloak:8080/realms/tiko/protocol/openid-connect/certs
       SPRING_CONFIG_IMPORT: optional:file:/bootstrap/staff-admin.properties
     volumes:
-      - gateway-secrets:/bootstrap:ro
+      - staff-admin-secrets:/bootstrap:ro
     # internal only: no published port, backend network only, reachable through the gateway
     tmpfs:
       - /tmp
@@ -263,6 +264,7 @@ volumes:
   keycloak-quarkus-cache:
   postgres-data:
   gateway-secrets:
+  staff-admin-secrets:
 
 networks:
   edge:

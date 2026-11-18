@@ -12,9 +12,10 @@
 #   users                  client / agent / admin / agent-agency / agent-nosite accounts
 #                          (passwords from .env; agent-nosite has no site and is an E2E fixture)
 #
-# Then it reads each client's generated secret back from Keycloak and writes it to a file
-# its own service loads through spring.config.import: gateway.properties (gateway uid) and
-# staff-admin.properties (staff-admin uid). Each file is readable by its service only.
+# Then it reads each client's generated secret back from Keycloak and writes it to the named
+# volume of the service that owns it: gateway.properties on gateway-secrets (gateway uid) and
+# staff-admin.properties on staff-admin-secrets (staff-admin uid). Neither volume is mounted by
+# the other service. Each file is readable by its service only.
 # No secret lives in git, in an image or in docker-compose.yml.
 #
 # Idempotent: each object is created when missing, then updated to the desired state, so it
@@ -24,6 +25,8 @@ set -euo pipefail
 KC_URL="${KC_URL:-http://keycloak:8080}"
 REALM="${REALM:-tiko}"
 OUT_DIR="${OUT_DIR:-/bootstrap}"
+# staff-admin's secret goes to its own volume, mounted into no other service
+STAFF_ADMIN_OUT_DIR="${STAFF_ADMIN_OUT_DIR:-/staff-admin-bootstrap}"
 # comma separated origins the frontend is served from
 FRONTEND_ORIGINS="${FRONTEND_ORIGINS:-http://localhost:3000,http://localhost:5173}"
 POST_LOGOUT_REDIRECT_URIS="${FRONTEND_ORIGINS//,/\/\*##}"
@@ -43,6 +46,12 @@ trap 'rm -rf "$TMP"' EXIT
 
 kc() { "$KCADM" "$@" --config "$KC_CONFIG"; }
 log() { echo "[keycloak-init] $*"; }
+# kcadm keeps an admin token that can expire during a slow run; re-login at phase boundaries.
+login() {
+  "$KCADM" config credentials --config "$KC_CONFIG" --server "$KC_URL" --realm master \
+    --user "$KC_ADMIN" --password "$KC_ADMIN_PASSWORD" >/dev/null 2>&1 \
+    || { log "Keycloak login failed"; exit 1; }
+}
 
 # ------------------------------------------------------------------ login (waits for Keycloak)
 for attempt in $(seq 1 60); do
@@ -303,6 +312,7 @@ ensure_group_mapper frontend
 log "group mapper ensured"
 
 # ------------------------------------------------------------------ test users
+login
 ensure_user client "$TIKO_CLIENT_PASSWORD" client@tiko.test Sara   Benali client
 ensure_user agent  "$TIKO_AGENT_PASSWORD"  agent@tiko.test  Mehdi  Karim  agent
 ensure_user admin  "$TIKO_ADMIN_PASSWORD"  admin@tiko.test  Lina   Berrada admin
@@ -316,6 +326,7 @@ ensure_user_group agent-agency /tenants/agency
 log "test users ensured"
 
 # ------------------------------------------------------------------ secret hand-off
+login
 BACKEND_UUID=$(client_uuid "$BACKEND_CLIENT_ID")
 SECRET=$(kc get "clients/$BACKEND_UUID/client-secret" -r "$REALM" \
   | sed -n 's/.*"value"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
@@ -325,6 +336,8 @@ SECRET=$(kc get "clients/$BACKEND_UUID/client-secret" -r "$REALM" \
 
 mkdir -p "$OUT_DIR"
 umask 077
+# earlier runs wrote both secrets to gateway-secrets; never leave a stale copy behind
+rm -f "$OUT_DIR/staff-admin.properties" "$STAFF_ADMIN_OUT_DIR/gateway.properties"
 cat > "$OUT_DIR/gateway.properties.tmp" <<EOF
 # written by keycloak/bootstrap.sh - do not edit, re-run keycloak-init instead
 provider.client-id=$BACKEND_CLIENT_ID
@@ -343,14 +356,15 @@ STAFF_SECRET=$(kc get "clients/$STAFF_ADMIN_UUID/client-secret" -r "$REALM" \
 [ -z "$STAFF_ADMIN_CLIENT_SECRET" ] || [ "$STAFF_SECRET" = "$STAFF_ADMIN_CLIENT_SECRET" ] \
   || { log "the configured $STAFF_ADMIN_CLIENT_ID secret did not match"; exit 1; }
 
-cat > "$OUT_DIR/staff-admin.properties.tmp" <<EOF
+mkdir -p "$STAFF_ADMIN_OUT_DIR"
+cat > "$STAFF_ADMIN_OUT_DIR/staff-admin.properties.tmp" <<EOF
 # written by keycloak/bootstrap.sh - do not edit, re-run keycloak-init instead
 staff-admin.keycloak.client-id=$STAFF_ADMIN_CLIENT_ID
 staff-admin.keycloak.client-secret=$STAFF_SECRET
 EOF
-mv "$OUT_DIR/staff-admin.properties.tmp" "$OUT_DIR/staff-admin.properties"
-# readable by the staff-admin uid only; the gateway uid cannot open this file
-chown "$STAFF_ADMIN_OWNER_UID:$STAFF_ADMIN_OWNER_UID" "$OUT_DIR/staff-admin.properties" 2>/dev/null || true
-chmod 400 "$OUT_DIR/staff-admin.properties"
-log "secret of $STAFF_ADMIN_CLIENT_ID written to $OUT_DIR/staff-admin.properties"
+mv "$STAFF_ADMIN_OUT_DIR/staff-admin.properties.tmp" "$STAFF_ADMIN_OUT_DIR/staff-admin.properties"
+# readable by the staff-admin uid only; its volume is not mounted by any other service
+chown "$STAFF_ADMIN_OWNER_UID:$STAFF_ADMIN_OWNER_UID" "$STAFF_ADMIN_OUT_DIR/staff-admin.properties" 2>/dev/null || true
+chmod 400 "$STAFF_ADMIN_OUT_DIR/staff-admin.properties"
+log "secret of $STAFF_ADMIN_CLIENT_ID written to $STAFF_ADMIN_OUT_DIR/staff-admin.properties"
 log "done"
