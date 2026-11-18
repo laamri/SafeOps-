@@ -12,14 +12,17 @@ import com.sun.net.httpserver.HttpServer;
 import ma.ensa.staffadmin.keycloak.KeycloakAdminClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpStatus;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -35,17 +38,21 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.blankOrNullString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -59,6 +66,7 @@ class StaffAuthorizationTest {
     private static final String ISSUER = "http://issuer.test/realms/tiko";
     private static final String AUDIENCE = "tiko-api";
     private static final String KID = "test-key";
+    private static final String AGENCY_USER = "11111111-1111-1111-1111-111111111111";
     private static final KeyPair KEYS = generateKeys();
     private static final KeyPair OTHER_KEYS = generateKeys();
 
@@ -216,6 +224,94 @@ class StaffAuthorizationTest {
                 .andExpect(jsonPath("$.temporaryPassword", not(blankOrNullString())));
 
         verify(keycloak).inviteAgent(eq("clinic"), any(InviteStaffRequest.class));
+    }
+
+    @Test
+    void clinicAdminCannotActOnAnAgencyUserByUserId() throws Exception {
+        ResponseStatusException unknown = new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown member");
+        when(keycloak.setEnabled("clinic", AGENCY_USER, false)).thenThrow(unknown);
+        when(keycloak.updateMember(eq("clinic"), eq(AGENCY_USER), any())).thenThrow(unknown);
+        doThrow(unknown).when(keycloak).removeMember("clinic", AGENCY_USER);
+        when(keycloak.resetPassword("clinic", AGENCY_USER)).thenThrow(unknown);
+
+        mockMvc.perform(put("/api/staff/sites/clinic/staff/" + AGENCY_USER + "/enabled")
+                        .header("Authorization", adminBearer())
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"enabled\":false}"))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(put("/api/staff/sites/clinic/staff/" + AGENCY_USER)
+                        .header("Authorization", adminBearer())
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"email\":\"agency@tiko.test\",\"firstName\":\"A\",\"lastName\":\"B\"}"))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(delete("/api/staff/sites/clinic/staff/" + AGENCY_USER)
+                        .header("Authorization", adminBearer()))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(post("/api/staff/sites/clinic/staff/" + AGENCY_USER + "/reset-password")
+                        .header("Authorization", adminBearer()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void inviteIgnoresRoleAndGroupChosenInTheRequestBody() throws Exception {
+        when(keycloak.inviteAgent(eq("clinic"), any(InviteStaffRequest.class)))
+                .thenReturn(new InvitationView("id-3", "new.agent", "TempPass-aZ7!"));
+
+        mockMvc.perform(post("/api/staff/sites/clinic/staff")
+                        .header("Authorization", adminBearer())
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {"username":"new.agent","email":"new.agent@tiko.test",
+                                 "firstName":"New","lastName":"Agent",
+                                 "role":"admin","roles":["admin"],"groups":["/tenants/agency"],
+                                 "group":"/tenants/agency"}
+                                """))
+                .andExpect(status().isCreated());
+
+        ArgumentCaptor<InviteStaffRequest> captured = ArgumentCaptor.forClass(InviteStaffRequest.class);
+        verify(keycloak).inviteAgent(eq("clinic"), captured.capture());
+        assertEquals("new.agent", captured.getValue().username());
+        assertEquals("new.agent@tiko.test", captured.getValue().email());
+    }
+
+    @Test
+    void staffListNeverReturnsATemporaryPassword() throws Exception {
+        when(keycloak.listStaff("clinic")).thenReturn(List.of(
+                new StaffView("id-1", "agent", "agent@tiko.test", "Mehdi", "Karim", true)));
+
+        mockMvc.perform(get("/api/staff/sites/clinic/staff")
+                        .header("Authorization", adminBearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].username").value("agent"))
+                .andExpect(jsonPath("$[0].temporaryPassword").doesNotExist());
+    }
+
+    @Test
+    void resetPasswordReturnsTheTemporaryPasswordOnce() throws Exception {
+        when(keycloak.resetPassword("clinic", AGENCY_USER))
+                .thenReturn(new InvitationView(AGENCY_USER, "agent", "TempPass-aZ7!"));
+
+        mockMvc.perform(post("/api/staff/sites/clinic/staff/" + AGENCY_USER + "/reset-password")
+                        .header("Authorization", adminBearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.temporaryPassword", not(blankOrNullString())));
+
+        verify(keycloak).resetPassword("clinic", AGENCY_USER);
+    }
+
+    @Test
+    void agentCannotResetAPasswordEvenAtItsOwnSite() throws Exception {
+        mockMvc.perform(post("/api/staff/sites/clinic/staff/" + AGENCY_USER + "/reset-password")
+                        .header("Authorization", bearer(token("agent-1", List.of("agent"),
+                                List.of("/tenants/clinic"), AUDIENCE, Instant.now().plusSeconds(300), KEYS))))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(keycloak);
+    }
+
+    private static String adminBearer() throws Exception {
+        return bearer(token("admin-1", List.of("admin"), List.of("/tenants/clinic"),
+                AUDIENCE, Instant.now().plusSeconds(300), KEYS));
     }
 
     private static String inviteBody() {

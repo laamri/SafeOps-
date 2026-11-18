@@ -5,9 +5,11 @@ import ma.ensa.staffadmin.keycloak.KeycloakAdminClient;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -16,6 +18,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.regex.Pattern;
 
 /**
@@ -47,6 +50,54 @@ public class StaffController {
                                  JwtAuthenticationToken caller) {
         requireAdminAtSite(caller.getToken(), site);
         return keycloak.inviteAgent(site, request);
+    }
+
+    /**
+     * Every user-id operation is scoped twice: the caller must be an admin of the site named in
+     * the path, and the target must be a member of that same site group. A user of another site
+     * is reported as unknown (404), like a random id, so ids cannot be probed across tenants.
+     */
+    @PutMapping("/{userId}/enabled")
+    public StaffView setEnabled(@PathVariable String site, @PathVariable String userId,
+                                @Valid @RequestBody MemberEnabledRequest request,
+                                JwtAuthenticationToken caller) {
+        requireAdminAtSite(caller.getToken(), site);
+        requireUserId(userId);
+        return keycloak.setEnabled(site, userId, request.enabled());
+    }
+
+    @PutMapping("/{userId}")
+    public StaffView update(@PathVariable String site, @PathVariable String userId,
+                            @Valid @RequestBody MemberUpdateRequest request,
+                            JwtAuthenticationToken caller) {
+        requireAdminAtSite(caller.getToken(), site);
+        requireUserId(userId);
+        return keycloak.updateMember(site, userId, request);
+    }
+
+    @DeleteMapping("/{userId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void remove(@PathVariable String site, @PathVariable String userId,
+                       JwtAuthenticationToken caller) {
+        requireAdminAtSite(caller.getToken(), site);
+        requireUserId(userId);
+        keycloak.removeMember(site, userId);
+    }
+
+    @PostMapping("/{userId}/reset-password")
+    public InvitationView resetPassword(@PathVariable String site, @PathVariable String userId,
+                                        JwtAuthenticationToken caller) {
+        requireAdminAtSite(caller.getToken(), site);
+        requireUserId(userId);
+        return keycloak.resetPassword(site, userId);
+    }
+
+    static void requireUserId(String userId) {
+        try {
+            UUID.fromString(userId);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown member");
+        }
     }
 
     static void requireAdminAtSite(Jwt token, String site) {

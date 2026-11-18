@@ -3,6 +3,7 @@ package ma.ensa.staffadmin.keycloak;
 import ma.ensa.staffadmin.configuration.StaffAdminProperties;
 import ma.ensa.staffadmin.web.InvitationView;
 import ma.ensa.staffadmin.web.InviteStaffRequest;
+import ma.ensa.staffadmin.web.MemberUpdateRequest;
 import ma.ensa.staffadmin.web.StaffView;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpStatus;
@@ -56,6 +57,131 @@ public class KeycloakAdminClient {
         } catch (RestClientException exception) {
             throw failure(exception);
         }
+    }
+
+    public StaffView setEnabled(String site, String userId, boolean enabled) {
+        String token = adminToken();
+        requireMember(token, site, userId);
+        try {
+            http.put()
+                    .uri(adminUri("/users/" + userId))
+                    .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of("enabled", enabled))
+                    .retrieve()
+                    .toBodilessEntity();
+            return userView(token, userId);
+        } catch (RestClientException exception) {
+            throw keycloakFailure(exception);
+        }
+    }
+
+    public StaffView updateMember(String site, String userId, MemberUpdateRequest request) {
+        String token = adminToken();
+        requireMember(token, site, userId);
+        try {
+            http.put()
+                    .uri(adminUri("/users/" + userId))
+                    .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of("email", request.email(), "firstName", request.firstName(),
+                            "lastName", request.lastName()))
+                    .retrieve()
+                    .toBodilessEntity();
+            return userView(token, userId);
+        } catch (RestClientException exception) {
+            throw keycloakFailure(exception);
+        }
+    }
+
+    public void removeMember(String site, String userId) {
+        String token = adminToken();
+        requireMember(token, site, userId);
+        try {
+            http.delete()
+                    .uri(adminUri("/users/" + userId))
+                    .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RestClientException exception) {
+            throw keycloakFailure(exception);
+        }
+    }
+
+    public InvitationView resetPassword(String site, String userId) {
+        String token = adminToken();
+        requireMember(token, site, userId);
+        StaffView member = userView(token, userId);
+        String temporaryPassword = temporaryPassword();
+        try {
+            http.put()
+                    .uri(adminUri("/users/" + userId + "/reset-password"))
+                    .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of("type", "password", "value", temporaryPassword, "temporary", true))
+                    .retrieve()
+                    .toBodilessEntity();
+            http.put()
+                    .uri(adminUri("/users/" + userId))
+                    .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of("requiredActions", List.of("UPDATE_PASSWORD")))
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RestClientException exception) {
+            throw keycloakFailure(exception);
+        }
+        return new InvitationView(member.id(), member.username(), temporaryPassword);
+    }
+
+    /**
+     * The caller was already authorised for {@code site}; this additionally proves the target
+     * account belongs to that site's group before anything is changed.
+     */
+    private void requireMember(String token, String site, String userId) {
+        String groupId = groupId(site, token);
+        try {
+            List<Map<String, Object>> groups = getList(token,
+                    "/users/" + userId + "/groups?briefRepresentation=true&max=200");
+            boolean member = groups.stream()
+                    .anyMatch(group -> groupId.equals(String.valueOf(group.get("id"))));
+            if (!member) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown member");
+            }
+        } catch (RestClientResponseException exception) {
+            if (exception.getStatusCode().value() == HttpStatus.NOT_FOUND.value()) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown member");
+            }
+            throw failure(exception);
+        } catch (RestClientException exception) {
+            throw failure(exception);
+        }
+    }
+
+    private StaffView userView(String token, String userId) {
+        try {
+            return toView(getMap(token, "/users/" + userId));
+        } catch (RestClientResponseException exception) {
+            if (exception.getStatusCode().value() == HttpStatus.NOT_FOUND.value()) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown member");
+            }
+            throw failure(exception);
+        } catch (RestClientException exception) {
+            throw failure(exception);
+        }
+    }
+
+    private static ResponseStatusException keycloakFailure(RestClientException exception) {
+        if (exception instanceof RestClientResponseException response) {
+            int status = response.getStatusCode().value();
+            if (status == HttpStatus.NOT_FOUND.value()) {
+                return new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown member");
+            }
+            if (status == HttpStatus.CONFLICT.value()) {
+                return new ResponseStatusException(HttpStatus.CONFLICT, "the user already exists");
+            }
+        }
+        return failure(exception);
     }
 
     public InvitationView inviteAgent(String site, InviteStaffRequest request) {
