@@ -11,6 +11,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * The request as the downstream services see it: the verified identity added as headers,
@@ -28,10 +29,12 @@ public class AuthenticatedRequest extends HttpServletRequestWrapper {
     public static final String EMAIL = "X-Auth-Email";
     public static final String CLIENT = "X-Auth-Client";
     public static final String ROLES = "X-Auth-Roles";
+    public static final String ORG_IDS = "X-Auth-Org-Ids";
+    public static final String SITE_IDS = "X-Auth-Site-Ids";
 
     private static final Set<String> MANAGED = Set.of(
             SUBJECT.toLowerCase(), USERNAME.toLowerCase(), EMAIL.toLowerCase(),
-            CLIENT.toLowerCase(), ROLES.toLowerCase());
+            CLIENT.toLowerCase(), ROLES.toLowerCase(), ORG_IDS.toLowerCase(), SITE_IDS.toLowerCase());
 
     private final Map<String, String> identity;
 
@@ -50,6 +53,8 @@ public class AuthenticatedRequest extends HttpServletRequestWrapper {
         put(headers, EMAIL, user.email());
         put(headers, CLIENT, user.clientId());
         put(headers, ROLES, String.join(",", user.authorities()));
+        put(headers, ORG_IDS, String.join(",", new TreeSet<>(user.orgIds())));
+        put(headers, SITE_IDS, String.join(",", new TreeSet<>(user.siteIds())));
         return headers;
     }
 

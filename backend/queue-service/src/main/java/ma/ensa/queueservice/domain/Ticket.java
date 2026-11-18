@@ -1,5 +1,6 @@
 package ma.ensa.queueservice.domain;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -15,7 +16,8 @@ import java.util.UUID;
 @Entity
 @Table(indexes = {
         @Index(columnList = "ownerSubject"),
-        @Index(columnList = "queue_id, status")
+        @Index(columnList = "queue_id, status"),
+        @Index(columnList = "organization_id, queue_id, status")
 })
 public class Ticket {
 
@@ -24,6 +26,9 @@ public class Ticket {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     private ServiceQueue queue;
+
+    @Column(name = "organization_id", length = 64)
+    private String organizationId;
 
     private int number;
     private String code;
@@ -44,6 +49,9 @@ public class Ticket {
     public Ticket(ServiceQueue queue, int number, String ownerSubject, String ownerName) {
         this.id = UUID.randomUUID();
         this.queue = queue;
+        this.organizationId = queue.getEstablishment().getOrganizationId() == null
+                ? queue.getEstablishment().getId()
+                : queue.getEstablishment().getOrganizationId();
         this.number = number;
         this.code = "%s-%03d".formatted(queue.getPrefix(), number);
         this.ownerSubject = ownerSubject;
@@ -57,17 +65,35 @@ public class Ticket {
     }
 
     public void call() {
-        status = TicketStatus.CALLED;
+        moveTo(TicketStatus.WAITING, TicketStatus.CALLED);
         calledAt = Instant.now();
     }
 
-    public void close(TicketStatus outcome) {
-        status = outcome;
+    public void cancel() {
+        moveTo(TicketStatus.WAITING, TicketStatus.CANCELLED);
         closedAt = Instant.now();
+    }
+
+    public void serve() {
+        moveTo(TicketStatus.CALLED, TicketStatus.SERVED);
+        closedAt = Instant.now();
+    }
+
+    public void noShow() {
+        moveTo(TicketStatus.CALLED, TicketStatus.NO_SHOW);
+        closedAt = Instant.now();
+    }
+
+    private void moveTo(TicketStatus required, TicketStatus next) {
+        if (status != required) {
+            throw new TicketTransitionException(code, status, next);
+        }
+        status = next;
     }
 
     public UUID getId() { return id; }
     public ServiceQueue getQueue() { return queue; }
+    public String getOrganizationId() { return organizationId; }
     public int getNumber() { return number; }
     public String getCode() { return code; }
     public String getOwnerSubject() { return ownerSubject; }
@@ -75,4 +101,8 @@ public class Ticket {
     public TicketStatus getStatus() { return status; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getCalledAt() { return calledAt; }
+
+    void assignOrganizationId(String organizationId) {
+        this.organizationId = organizationId;
+    }
 }

@@ -3,6 +3,7 @@ package ma.ensa.appointmentservice.domain;
 import ma.ensa.appointmentservice.security.CurrentUser;
 import ma.ensa.appointmentservice.web.Views.AppointmentView;
 import ma.ensa.appointmentservice.web.Views.CreateAppointmentRequest;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -10,20 +11,33 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional
 public class AppointmentService {
 
     private final AppointmentRepository appointments;
+    private final Set<String> organizations;
 
-    public AppointmentService(AppointmentRepository appointments) {
+    public AppointmentService(AppointmentRepository appointments,
+                              @Value("${tiko.organizations:clinic,agency}") String organizations) {
         this.appointments = appointments;
+        this.organizations = Arrays.stream(organizations.split(","))
+                .map(String::trim)
+                .filter(organization -> !organization.isEmpty())
+                .collect(Collectors.toUnmodifiableSet());
     }
 
     public AppointmentView create(CurrentUser user, CreateAppointmentRequest request) {
+        String establishmentId = request.establishmentId().trim();
+        if (!organizations.contains(establishmentId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "unknown establishment " + establishmentId);
+        }
         if (!request.startsAt().isAfter(Instant.now())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "appointment must be in the future");
         }
@@ -31,7 +45,7 @@ public class AppointmentService {
                 user.subject(), request.startsAt(), AppointmentStatus.BOOKED)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "you already have a booked appointment at this time");
         }
-        Appointment appointment = new Appointment(user.subject(), request.establishmentId(),
+        Appointment appointment = new Appointment(user.subject(), establishmentId,
                 request.queueId(), request.startsAt(), request.reason());
         try {
             return toView(appointments.saveAndFlush(appointment));
@@ -73,23 +87,29 @@ public class AppointmentService {
         if (establishmentId == null || establishmentId.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "establishmentId is required");
         }
-        return appointments.findByEstablishmentIdOrderByStartsAtAsc(establishmentId.trim()).stream()
+        String siteId = establishmentId.trim();
+        if (!organizations.contains(siteId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "unknown establishment " + siteId);
+        }
+        user.requireSite(siteId);
+        return appointments.findByEstablishmentIdOrderByStartsAtAsc(siteId).stream()
                 .map(this::toView)
                 .toList();
     }
 
     public AppointmentView complete(CurrentUser user, UUID id) {
         user.requireStaff();
-        return closeBooked(id, AppointmentStatus.COMPLETED);
+        return closeBooked(user, id, AppointmentStatus.COMPLETED);
     }
 
     public AppointmentView noShow(CurrentUser user, UUID id) {
         user.requireStaff();
-        return closeBooked(id, AppointmentStatus.NO_SHOW);
+        return closeBooked(user, id, AppointmentStatus.NO_SHOW);
     }
 
-    private AppointmentView closeBooked(UUID id, AppointmentStatus status) {
+    private AppointmentView closeBooked(CurrentUser user, UUID id, AppointmentStatus status) {
         Appointment appointment = find(id);
+        user.requireSite(appointment.getOrganizationId());
         requireBooked(appointment);
         appointment.setStatus(status);
         return toView(appointment);
@@ -111,7 +131,7 @@ public class AppointmentService {
 
     private AppointmentView toView(Appointment appointment) {
         return new AppointmentView(appointment.getId(), appointment.getOwnerSubject(), appointment.getEstablishmentId(),
-                appointment.getQueueId(), appointment.getStartsAt(), appointment.getReason(),
-                appointment.getStatus(), appointment.getCreatedAt());
+                appointment.getOrganizationId(), appointment.getQueueId(), appointment.getStartsAt(),
+                appointment.getReason(), appointment.getStatus(), appointment.getCreatedAt());
     }
 }

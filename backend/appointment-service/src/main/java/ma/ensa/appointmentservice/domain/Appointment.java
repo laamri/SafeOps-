@@ -14,7 +14,8 @@ import java.util.UUID;
 @Entity
 @Table(name = "appointment", indexes = {
         @Index(columnList = "ownerSubject, startsAt, status"),
-        @Index(columnList = "establishmentId, startsAt")
+        @Index(columnList = "establishmentId, startsAt"),
+        @Index(columnList = "organization_id, starts_at")
 })
 public class Appointment {
 
@@ -26,6 +27,9 @@ public class Appointment {
 
     @Column(name = "establishment_id", nullable = false, length = 128)
     private String establishmentId;
+
+    @Column(name = "organization_id", length = 64)
+    private String organizationId;
 
     @Column(name = "queue_id", nullable = false)
     private Long queueId;
@@ -50,6 +54,8 @@ public class Appointment {
         this.id = UUID.randomUUID();
         this.ownerSubject = ownerSubject;
         this.establishmentId = establishmentId;
+        // Slice 1: establishment and organisation share the same id.
+        this.organizationId = establishmentId;
         this.queueId = queueId;
         this.startsAt = startsAt;
         this.reason = reason;
@@ -71,6 +77,14 @@ public class Appointment {
 
     public String getEstablishmentId() {
         return establishmentId;
+    }
+
+    public String getOrganizationId() {
+        return organizationId;
+    }
+
+    void assignOrganizationId(String organizationId) {
+        this.organizationId = organizationId;
     }
 
     public Long getQueueId() {

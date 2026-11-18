@@ -23,12 +23,12 @@ class AppointmentServiceTest {
 
     private AppointmentRepository appointments;
     private AppointmentService service;
-    private final CurrentUser owner = new CurrentUser("client-1", "client", Set.of());
+    private final CurrentUser owner = new CurrentUser("client-1", "client", Set.of(), Set.of());
 
     @BeforeEach
     void setUp() {
         appointments = mock(AppointmentRepository.class);
-        service = new AppointmentService(appointments);
+        service = new AppointmentService(appointments, "clinic,agency");
     }
 
     @Test

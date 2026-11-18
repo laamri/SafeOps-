@@ -38,7 +38,8 @@ public final class Views {
             String prefix,
             String counter,
             long waiting,
-            long estimatedWaitMinutes
+            long estimatedWaitMinutes,
+            boolean open
     ) {
     }
 
@@ -74,5 +75,15 @@ public final class Views {
     }
 
     public record TakeTicketRequest(@jakarta.validation.constraints.NotNull Long queueId) {
+    }
+
+    public record QueueStatusRequest(@jakarta.validation.constraints.NotNull Boolean open) {
+    }
+
+    /**
+     * Same shape as the appointment-service error body, so the frontend can read
+     * {@code message} for every 4xx from the gateway.
+     */
+    public record ApiError(java.time.Instant timestamp, int status, String error, String message, String path) {
     }
 }

@@ -4,7 +4,7 @@ import keycloak from './keycloak';
 // to the api-gateway, which verifies the token and routes to the queue-service.
 const BASE = import.meta.env.VITE_API_BASE_URL ?? '';
 
-export type Queue = { id: number; name: string; prefix: string; counter: string; waiting: number; estimatedWaitMinutes: number };
+export type Queue = { id: number; name: string; prefix: string; counter: string; waiting: number; estimatedWaitMinutes: number; open: boolean };
 export type Establishment = {
   id: string; name: string; category: string; city: string; shortName: string; color: string; tint: string;
   address: string; opensAt: string; closesAt: string; waiting: number; estimatedWaitMinutes: number; queues: Queue[];
@@ -21,6 +21,7 @@ export type Appointment = {
   id: string;
   ownerSubject: string;
   establishmentId: string;
+  organizationId: string;
   queueId: number;
   startsAt: string;
   reason: string;
@@ -80,6 +81,7 @@ export const api = {
   ticket: (id: string) => request<Ticket>(`/tickets/${encodeURIComponent(id)}`),
   cancelTicket: (id: string) => post<Ticket>(`/tickets/${encodeURIComponent(id)}/cancel`),
   counter: (queueId: number) => request<Counter>(`/queues/${queueId}/counter`),
+  setQueueOpen: (queueId: number, open: boolean) => put<Counter>(`/queues/${queueId}/status`, { open }),
   callNext: (queueId: number) => post<Counter>(`/queues/${queueId}/call-next`),
   served: (ticketId: string) => post<Counter>(`/tickets/${encodeURIComponent(ticketId)}/served`),
   noShow: (ticketId: string) => post<Counter>(`/tickets/${encodeURIComponent(ticketId)}/no-show`),
@@ -87,6 +89,10 @@ export const api = {
   createAppointment: (input: Pick<Appointment, 'establishmentId' | 'queueId' | 'startsAt' | 'reason'>) =>
     post<Appointment>('/appointments', input),
   cancelAppointment: (id: string) => post<Appointment>(`/appointments/${encodeURIComponent(id)}/cancel`),
+  tenantAppointments: (establishmentId: string) =>
+    request<Appointment[]>(`/appointments?establishmentId=${encodeURIComponent(establishmentId)}`),
+  completeAppointment: (id: string) => post<Appointment>(`/appointments/${encodeURIComponent(id)}/complete`),
+  noShowAppointment: (id: string) => post<Appointment>(`/appointments/${encodeURIComponent(id)}/no-show`),
   preferences: () => request<Preferences>('/profile/preferences'),
   updatePreferences: (input: Omit<Preferences, 'subject'>) => put<Preferences>('/profile/preferences', input),
   notifications: () => request<Notification[]>('/notifications'),
