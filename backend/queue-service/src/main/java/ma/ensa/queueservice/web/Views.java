@@ -26,6 +26,7 @@ public final class Views {
             String address,
             String opensAt,
             String closesAt,
+            boolean active,
             long waiting,
             long estimatedWaitMinutes,
             List<QueueView> queues

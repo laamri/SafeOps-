@@ -165,4 +165,28 @@ class QueueServiceTest {
 
         assertEquals(TicketStatus.WAITING, ticket.status());
     }
+
+    @Test
+    void aSuspendedEstablishmentRefusesNewTickets() {
+        queue.getEstablishment().suspend();
+        when(queues.findByIdForUpdate(queue.getId())).thenReturn(Optional.of(queue));
+
+        var exception = assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                () -> service.takeTicket(new CurrentUser("client-1", "client", Set.of(), Set.of()), queue.getId()));
+
+        assertEquals(409, exception.getStatusCode().value());
+        verify(tickets, never()).save(any(Ticket.class));
+    }
+
+    @Test
+    void aSuspendedEstablishmentLetsTheCurrentTicketBeServed() {
+        queue.getEstablishment().suspend();
+        Ticket called = new Ticket(queue, 1, "client-1", "Client");
+        called.call();
+        when(tickets.findById(called.getId())).thenReturn(Optional.of(called));
+
+        service.serve(agent, called.getId());
+
+        assertEquals(TicketStatus.SERVED, called.getStatus());
+    }
 }

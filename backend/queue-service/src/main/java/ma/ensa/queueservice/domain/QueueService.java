@@ -57,6 +57,9 @@ public class QueueService {
     public TicketView takeTicket(CurrentUser user, Long queueId) {
         ServiceQueue queue = queues.findByIdForUpdate(queueId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown queue " + queueId));
+        if (!queue.getEstablishment().isActive()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "this establishment is suspended");
+        }
         if (!queue.isOpen()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "this queue is closed");
         }
@@ -179,7 +182,7 @@ public class QueueService {
         long waiting = queueViews.stream().mapToLong(QueueView::waiting).sum();
         long estimate = queueViews.stream().mapToLong(QueueView::estimatedWaitMinutes).max().orElse(0);
         return new EstablishmentView(e.getId(), e.getName(), e.getCategory(), e.getCity(), e.getShortName(),
-                e.getColor(), e.getTint(), e.getAddress(), e.getOpensAt(), e.getClosesAt(),
+                e.getColor(), e.getTint(), e.getAddress(), e.getOpensAt(), e.getClosesAt(), e.isActive(),
                 waiting, estimate, queueViews);
     }
 

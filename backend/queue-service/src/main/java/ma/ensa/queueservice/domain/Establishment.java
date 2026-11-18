@@ -30,6 +30,13 @@ public class Establishment {
     private String opensAt;
     private String closesAt;
 
+    /**
+     * A suspended establishment keeps its data and lets in-flight tickets finish, but refuses
+     * new tickets.
+     */
+    @Column(nullable = false)
+    private boolean active = true;
+
     protected Establishment() {
     }
 
@@ -65,6 +72,11 @@ public class Establishment {
     public String getAddress() { return address; }
     public String getOpensAt() { return opensAt; }
     public String getClosesAt() { return closesAt; }
+    public boolean isActive() { return active; }
+
+    void suspend() { this.active = false; }
+
+    void reactivate() { this.active = true; }
 
     void assignOrganizationId(String organizationId) {
         this.organizationId = organizationId;
