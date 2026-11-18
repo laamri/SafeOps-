@@ -44,6 +44,15 @@ export type Notification = {
   read: boolean;
   createdAt: string;
 };
+export type StaffMember = {
+  id: string;
+  username: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  enabled: boolean;
+};
+export type StaffInvitation = { id: string; username: string; temporaryPassword: string };
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -97,6 +106,9 @@ export const api = {
   updatePreferences: (input: Omit<Preferences, 'subject'>) => put<Preferences>('/profile/preferences', input),
   notifications: () => request<Notification[]>('/notifications'),
   markNotificationRead: (id: string) => post<Notification>(`/notifications/${encodeURIComponent(id)}/read`),
+  staff: (site: string) => request<StaffMember[]>(`/staff/sites/${encodeURIComponent(site)}/staff`),
+  inviteStaff: (site: string, input: { username: string; email: string; firstName: string; lastName: string }) =>
+    post<StaffInvitation>(`/staff/sites/${encodeURIComponent(site)}/staff`, input),
 };
 
 /** "position 1" -> "1er", 2 -> "2e" */

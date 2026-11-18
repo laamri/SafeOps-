@@ -165,6 +165,32 @@ services:
       postgres:
         condition: service_healthy
 
+  staff-admin:
+    build: ./backend/staff-admin
+    environment:
+      KEYCLOAK_INTERNAL_URL: http://keycloak:8080
+      TOKEN_ISSUER: http://localhost:${KEYCLOAK_PORT}/realms/tiko
+      TOKEN_JWKS_URL: http://keycloak:8080/realms/tiko/protocol/openid-connect/certs
+      SPRING_CONFIG_IMPORT: optional:file:/bootstrap/staff-admin.properties
+    volumes:
+      - gateway-secrets:/bootstrap:ro
+    # internal only: no published port, backend network only, reachable through the gateway
+    tmpfs:
+      - /tmp
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    cpus: 0.5
+    restart: unless-stopped
+    networks:
+      - backend
+    depends_on:
+      keycloak-init:
+        condition: service_completed_successfully
+      keycloak:
+        condition: service_healthy
+
   api-gateway:
     build: ./backend/api-gateway
     environment:
@@ -174,6 +200,7 @@ services:
       QUEUE_SERVICE_URL: http://queue-service:8081
       APPOINTMENT_SERVICE_URL: http://appointment-service:8082
       PROFILE_SERVICE_URL: http://profile-notification-service:8083
+      STAFF_ADMIN_URL: http://staff-admin:8084
       SPRING_CONFIG_IMPORT: optional:file:/bootstrap/gateway.properties
     volumes:
       - gateway-secrets:/bootstrap:ro
@@ -198,6 +225,8 @@ services:
       appointment-service:
         condition: service_healthy
       profile-notification-service:
+        condition: service_healthy
+      staff-admin:
         condition: service_healthy
 
   frontend:

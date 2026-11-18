@@ -10,7 +10,8 @@ browser ──► frontend :3000 ──/api──► api-gateway :8888          
    │                                    │                             │
    │                                    ├── queue-service :8081 ─────┐│
    │                                    ├── appointment-service :8082┤│
-   │                                    └── profile-notification :8083
+   │                                    ├── profile-notification :8083│
+   │                                    └── staff-admin :8084 ────────┘│
    │                                                                  │
    └──────────────► Keycloak :8080 ◄─────────────────────────────────┘
                                         backend network
@@ -23,6 +24,11 @@ browser ──► frontend :3000 ──/api──► api-gateway :8888          
 The browser uses Keycloak Authorization Code + PKCE. The gateway validates tokens and forwards
 the identity headers to backend services. The shared PostgreSQL container creates separate
 databases and login roles for the queue, appointment, and profile-notification services.
+
+`staff-admin` (agent invitations and team listing) is internal only: it publishes no host port,
+re-validates every token itself instead of trusting `X-Auth-*`, and reaches Keycloak's admin API
+through a dedicated service-account client restricted to `view-realm`, `view-users`, and
+`manage-users`.
 
 ## Run locally
 

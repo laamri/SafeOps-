@@ -4,14 +4,17 @@
 #   realm "tiko"           registration on, realm roles client / agent / admin, "client" by default
 #   client "frontend"      public, Authorization Code + PKCE (S256) only - used by keycloak-js
 #   client "tiko-backend"  confidential, service account - the api-gateway's own client
+#   client "tiko-staff-admin" confidential, service account - staff-admin's admin API client;
+#                          its service account gets view-users + manage-users, nothing else
 #   audience "tiko-api"    added to both clients' access tokens; the gateway requires it
 #   groups                 /tenants/clinic and /tenants/agency; agent + admin in clinic,
 #                          agent-agency in agency
 #   users                  client / agent / admin / agent-agency / agent-nosite accounts
 #                          (passwords from .env; agent-nosite has no site and is an E2E fixture)
 #
-# Then it reads tiko-backend's generated secret back from Keycloak and writes it to
-# $OUT_DIR/gateway.properties, which the gateway loads through spring.config.import.
+# Then it reads each client's generated secret back from Keycloak and writes it to a file
+# its own service loads through spring.config.import: gateway.properties (gateway uid) and
+# staff-admin.properties (staff-admin uid). Each file is readable by its service only.
 # No secret lives in git, in an image or in docker-compose.yml.
 #
 # Idempotent: each object is created when missing, then updated to the desired state, so it
@@ -27,8 +30,11 @@ POST_LOGOUT_REDIRECT_URIS="${FRONTEND_ORIGINS//,/\/\*##}"
 API_AUDIENCE="${API_AUDIENCE:-tiko-api}"
 BACKEND_CLIENT_ID="${BACKEND_CLIENT_ID:-tiko-backend}"
 BACKEND_CLIENT_SECRET="${BACKEND_CLIENT_SECRET:-}"
-# uid the gateway runs as (backend/api-gateway/Dockerfile): the only reader of the secret
+STAFF_ADMIN_CLIENT_ID="${STAFF_ADMIN_CLIENT_ID:-tiko-staff-admin}"
+STAFF_ADMIN_CLIENT_SECRET="${STAFF_ADMIN_CLIENT_SECRET:-}"
+# uid each service runs as (backend/*/Dockerfile): the only reader of its own secret file
 SECRET_OWNER_UID="${SECRET_OWNER_UID:-10001}"
+STAFF_ADMIN_OWNER_UID="${STAFF_ADMIN_OWNER_UID:-10002}"
 
 KCADM=/opt/keycloak/bin/kcadm.sh
 KC_CONFIG=/tmp/kcadm.config
@@ -252,6 +258,38 @@ if [ -n "$BACKEND_CLIENT_SECRET" ]; then
   log "configured the supplied secret for $BACKEND_CLIENT_ID"
 fi
 
+cat > "$TMP/staff-admin.json" <<EOF
+{
+  "clientId": "$STAFF_ADMIN_CLIENT_ID",
+  "name": "Tiko staff administration",
+  "enabled": true,
+  "protocol": "openid-connect",
+  "publicClient": false,
+  "clientAuthenticatorType": "client-secret",
+  "standardFlowEnabled": false,
+  "implicitFlowEnabled": false,
+  "directAccessGrantsEnabled": false,
+  "serviceAccountsEnabled": true
+}
+EOF
+ensure_client "$STAFF_ADMIN_CLIENT_ID" "$TMP/staff-admin.json"
+log "staff-admin client ensured"
+if [ -n "$STAFF_ADMIN_CLIENT_SECRET" ]; then
+  STAFF_ADMIN_UUID=$(client_uuid "$STAFF_ADMIN_CLIENT_ID")
+  kc update "clients/$STAFF_ADMIN_UUID" -r "$REALM" -s "secret=$STAFF_ADMIN_CLIENT_SECRET"
+  log "configured the supplied secret for $STAFF_ADMIN_CLIENT_ID"
+fi
+# the service account may read group members and create/update/delete users. Those are the
+# only admin operations staff-admin performs; no realm, client or role administration.
+kc add-roles -r "$REALM" --uusername "service-account-$STAFF_ADMIN_CLIENT_ID" \
+  --cclientid realm-management --rolename view-users
+kc add-roles -r "$REALM" --uusername "service-account-$STAFF_ADMIN_CLIENT_ID" \
+  --cclientid realm-management --rolename manage-users
+# reading /roles/agent (needed to map the agent role onto an invited account) requires view-realm
+kc add-roles -r "$REALM" --uusername "service-account-$STAFF_ADMIN_CLIENT_ID" \
+  --cclientid realm-management --rolename view-realm
+log "staff-admin service account restricted to view-realm + view-users + manage-users"
+
 ensure_audience_mapper frontend
 ensure_audience_mapper "$BACKEND_CLIENT_ID"
 log "audience mappers ensured"
@@ -297,4 +335,22 @@ mv "$OUT_DIR/gateway.properties.tmp" "$OUT_DIR/gateway.properties"
 chown "$SECRET_OWNER_UID:$SECRET_OWNER_UID" "$OUT_DIR/gateway.properties" 2>/dev/null || true
 chmod 400 "$OUT_DIR/gateway.properties"
 log "secret of $BACKEND_CLIENT_ID written to $OUT_DIR/gateway.properties"
+
+STAFF_ADMIN_UUID=$(client_uuid "$STAFF_ADMIN_CLIENT_ID")
+STAFF_SECRET=$(kc get "clients/$STAFF_ADMIN_UUID/client-secret" -r "$REALM" \
+  | sed -n 's/.*"value"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+[ -n "$STAFF_SECRET" ] || { log "could not read the $STAFF_ADMIN_CLIENT_ID secret"; exit 1; }
+[ -z "$STAFF_ADMIN_CLIENT_SECRET" ] || [ "$STAFF_SECRET" = "$STAFF_ADMIN_CLIENT_SECRET" ] \
+  || { log "the configured $STAFF_ADMIN_CLIENT_ID secret did not match"; exit 1; }
+
+cat > "$OUT_DIR/staff-admin.properties.tmp" <<EOF
+# written by keycloak/bootstrap.sh - do not edit, re-run keycloak-init instead
+staff-admin.keycloak.client-id=$STAFF_ADMIN_CLIENT_ID
+staff-admin.keycloak.client-secret=$STAFF_SECRET
+EOF
+mv "$OUT_DIR/staff-admin.properties.tmp" "$OUT_DIR/staff-admin.properties"
+# readable by the staff-admin uid only; the gateway uid cannot open this file
+chown "$STAFF_ADMIN_OWNER_UID:$STAFF_ADMIN_OWNER_UID" "$OUT_DIR/staff-admin.properties" 2>/dev/null || true
+chmod 400 "$OUT_DIR/staff-admin.properties"
+log "secret of $STAFF_ADMIN_CLIENT_ID written to $OUT_DIR/staff-admin.properties"
 log "done"

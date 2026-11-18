@@ -40,7 +40,8 @@ class GatewayRoutesTest {
             "/api/appointments/ce9b27c9-52c0-4dd1-9ae3-f62f34f8e98f/cancel",
             "/api/profile/preferences",
             "/api/notifications",
-            "/api/notifications/1/read");
+            "/api/notifications/1/read",
+            "/api/staff/sites/clinic/staff");
 
     private static final Map<String, String> EXPECTED_SERVICE_BY_ROUTE = Map.of(
             "appointment-service", "appointment",
@@ -105,7 +106,7 @@ class GatewayRoutesTest {
     void routesGoToTheExpectedServices() {
         assertEquals(Set.of("appointment-service", "profile-notification-service-profile",
                         "profile-notification-service-notifications", "queue-establishments", "queue-tickets",
-                        "queue-queues"),
+                        "queue-queues", "staff-admin"),
                 uriByRoute.keySet());
         assertTrue(uriByRoute.get("appointment-service").contains("APPOINTMENT_SERVICE_URL"));
         assertTrue(uriByRoute.get("profile-notification-service-profile").contains("PROFILE_SERVICE_URL"));
@@ -113,6 +114,7 @@ class GatewayRoutesTest {
         assertTrue(uriByRoute.get("queue-establishments").contains("QUEUE_SERVICE_URL"));
         assertTrue(uriByRoute.get("queue-tickets").contains("QUEUE_SERVICE_URL"));
         assertTrue(uriByRoute.get("queue-queues").contains("QUEUE_SERVICE_URL"));
+        assertTrue(uriByRoute.get("staff-admin").contains("STAFF_ADMIN_URL"));
     }
 
     @Test
@@ -128,6 +130,7 @@ class GatewayRoutesTest {
                 Set.copyOf(patternsByRoute.get("queue-establishments")));
         assertEquals(Set.of("/api/appointments", "/api/appointments/**"),
                 Set.copyOf(patternsByRoute.get("appointment-service")));
+        assertEquals(Set.of("/api/staff", "/api/staff/**"), Set.copyOf(patternsByRoute.get("staff-admin")));
     }
 
     private static boolean matches(String pattern, String path) {
