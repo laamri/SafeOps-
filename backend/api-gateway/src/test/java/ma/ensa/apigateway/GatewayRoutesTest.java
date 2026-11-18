@@ -118,6 +118,21 @@ class GatewayRoutesTest {
     }
 
     @Test
+    void staffAdminPathsAreMappedOnlyToTheStaffAdminService() {
+        for (String path : List.of(
+                "/api/staff",
+                "/api/staff/sites/clinic/staff",
+                "/api/staff/sites/clinic/staff/0f8fad5b-d9cb-469f-a165-70867728950e/enabled")) {
+            List<String> routes = patternsByRoute.entrySet().stream()
+                    .filter(route -> route.getValue().stream().anyMatch(pattern -> matches(pattern, path)))
+                    .map(Map.Entry::getKey)
+                    .toList();
+            assertEquals(List.of("staff-admin"), routes, "path " + path + " must be routed to staff-admin only");
+        }
+        assertTrue(uriByRoute.get("staff-admin").contains("STAFF_ADMIN_URL"));
+    }
+
+    @Test
     void thereIsNoApiCatchAll() {
         assertFalse(allPatterns().contains("/api/**"));
         assertFalse(allPatterns().stream().anyMatch(pattern -> pattern.endsWith("/api/**")));
