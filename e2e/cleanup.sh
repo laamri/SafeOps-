@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Deletes only the tickets and staff accounts recorded by the E2E run, then repairs last_number
-# on the queues those tickets belonged to. Never truncates a table, never deletes a fixture
-# user: only the rows the tests created are touched.
+# Deletes only the tickets, queues and staff accounts recorded by the E2E run, repairs
+# last_number on the queues those tickets belonged to, and lifts any suspension a test left
+# behind. Never truncates a table, never deletes a fixture user: only the rows the tests
+# created are touched.
 set -euo pipefail
 # Git Bash would rewrite container-side paths like /tmp/e2e-cleanup.config into Windows paths.
 export MSYS_NO_PATHCONV=1
@@ -9,6 +10,7 @@ export MSYS_NO_PATHCONV=1
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 FILE="$ROOT/e2e/test-results/created-tickets.txt"
 USERS_FILE="$ROOT/e2e/test-results/created-users.txt"
+QUEUES_FILE="$ROOT/e2e/test-results/created-queues.txt"
 CONTAINER="${E2E_POSTGRES_CONTAINER:-tiko-audit-postgres-1}"
 KEYCLOAK_CONTAINER="${E2E_KEYCLOAK_CONTAINER:-tiko-audit-keycloak-1}"
 
@@ -49,25 +51,21 @@ cleanup_users() {
 
 cleanup_users
 
-if [ ! -s "$FILE" ]; then
-  echo "e2e cleanup: nothing recorded"
-  exit 0
-fi
+DB_UP=true
+docker inspect "$CONTAINER" >/dev/null 2>&1 || DB_UP=false
+[ "$DB_UP" = true ] || echo "e2e cleanup: $CONTAINER is not running, database cleanup skipped"
 
-IDS=$(tr -d '\r' < "$FILE" | grep -E '^[0-9a-fA-F-]{36}$' | sort -u | tr '\n' ' ')
-: > "$FILE"
-if [ -z "$IDS" ]; then
-  echo "e2e cleanup: nothing recorded"
-  exit 0
-fi
+if [ "$DB_UP" = true ] && [ -s "$FILE" ]; then
+  IDS=$(tr -d '\r' < "$FILE" | grep -E '^[0-9a-fA-F-]{36}$' | sort -u | tr '\n' ' ')
+  : > "$FILE"
+  if [ -n "$IDS" ]; then
+    LIST=$(printf "'%s'," $IDS)
+    LIST=${LIST%,}
+    COUNT=$(echo "$IDS" | wc -w)
 
-LIST=$(printf "'%s'," $IDS)
-LIST=${LIST%,}
-COUNT=$(echo "$IDS" | wc -w)
-
-# The DELETE and the UPDATE share one snapshot, so the recomputed MAX must exclude the ids
-# being deleted explicitly; otherwise it counts the very rows this statement removes.
-docker exec -i "$CONTAINER" psql -U postgres -d tiko -v ON_ERROR_STOP=1 >/dev/null <<SQL
+    # The DELETE and the UPDATE share one snapshot, so the recomputed MAX must exclude the ids
+    # being deleted explicitly; otherwise it counts the very rows this statement removes.
+    docker exec -i "$CONTAINER" psql -U postgres -d tiko -v ON_ERROR_STOP=1 >/dev/null <<SQL
 WITH deleted AS (
     DELETE FROM ticket WHERE id IN ($LIST)
     RETURNING queue_id
@@ -79,4 +77,36 @@ SET last_number = COALESCE(
 WHERE q.id IN (SELECT queue_id FROM deleted);
 SQL
 
-echo "e2e cleanup: removed $COUNT test ticket(s)"
+    echo "e2e cleanup: removed $COUNT test ticket(s)"
+  else
+    echo "e2e cleanup: nothing recorded"
+  fi
+fi
+
+# Queue rows created by the suite are removed only while no ticket references them.
+if [ "$DB_UP" = true ] && [ -s "$QUEUES_FILE" ]; then
+  QUEUE_IDS=$(tr -d '\r' < "$QUEUES_FILE" | grep -E '^[0-9]+$' | sort -u | tr '\n' ' ')
+  : > "$QUEUES_FILE"
+  if [ -n "$QUEUE_IDS" ]; then
+    QUEUE_LIST=$(printf "'%s'," $QUEUE_IDS)
+    QUEUE_LIST=${QUEUE_LIST%,}
+    removed=$(docker exec -i "$CONTAINER" psql -U postgres -d tiko -tA -v ON_ERROR_STOP=1 <<SQL | tr -d '\r'
+WITH gone AS (
+    DELETE FROM service_queue q
+    WHERE q.id IN ($QUEUE_LIST)
+      AND NOT EXISTS (SELECT 1 FROM ticket t WHERE t.queue_id = q.id)
+    RETURNING 1
+)
+SELECT count(*) FROM gone;
+SQL
+)
+    [ "$removed" = "0" ] || echo "e2e cleanup: removed $removed test queue(s)"
+  fi
+fi
+
+# A failed spec can leave a fixture establishment suspended; the fixtures are active by default.
+if [ "$DB_UP" = true ]; then
+  docker exec -i "$CONTAINER" psql -U postgres -d tiko -v ON_ERROR_STOP=1 >/dev/null <<'SQL'
+UPDATE establishment SET active = true WHERE active = false;
+SQL
+fi

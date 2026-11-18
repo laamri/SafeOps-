@@ -2,7 +2,10 @@ package ma.ensa.queueservice.domain;
 
 import ma.ensa.queueservice.security.CurrentUser;
 import ma.ensa.queueservice.web.Views.CounterView;
+import ma.ensa.queueservice.web.Views.EstablishmentCreateRequest;
+import ma.ensa.queueservice.web.Views.EstablishmentUpdateRequest;
 import ma.ensa.queueservice.web.Views.EstablishmentView;
+import ma.ensa.queueservice.web.Views.QueueRequest;
 import ma.ensa.queueservice.web.Views.QueueView;
 import ma.ensa.queueservice.web.Views.TicketView;
 import org.springframework.http.HttpStatus;
@@ -50,6 +53,76 @@ public class QueueService {
         return establishments.findById(id)
                 .map(this::toView)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown establishment " + id));
+    }
+
+    // ---------------------------------------------------------------- administration
+
+    public EstablishmentView createEstablishment(CurrentUser user, EstablishmentCreateRequest request) {
+        user.requireAdmin();
+        // the row only backs a site the caller already holds in the token; it never widens it
+        user.requireSite(request.id());
+        if (establishments.existsById(request.id())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "establishment " + request.id() + " already exists");
+        }
+        Establishment created = new Establishment(request.id(), request.name(), request.category(), request.city(),
+                request.shortName(), request.color(), request.tint(), request.address(), request.opensAt(),
+                request.closesAt(), request.id());
+        return toView(establishments.save(created));
+    }
+
+    public EstablishmentView updateEstablishment(CurrentUser user, String id, EstablishmentUpdateRequest request) {
+        user.requireAdmin();
+        Establishment establishment = establishmentEntity(id);
+        user.requireSite(establishment.getOrganizationId());
+        establishment.updateProfile(request.name(), request.category(), request.city(), request.shortName(),
+                request.color(), request.tint(), request.address(), request.opensAt(), request.closesAt());
+        return toView(establishment);
+    }
+
+    /**
+     * Suspension keeps the data and lets in-flight tickets finish; it only refuses new ones.
+     */
+    public EstablishmentView setEstablishmentActive(CurrentUser user, String id, boolean active) {
+        user.requireAdmin();
+        Establishment establishment = establishmentEntity(id);
+        user.requireSite(establishment.getOrganizationId());
+        if (active) {
+            establishment.reactivate();
+        } else {
+            establishment.suspend();
+        }
+        return toView(establishment);
+    }
+
+    public QueueView createQueue(CurrentUser user, String establishmentId, QueueRequest request) {
+        user.requireAdmin();
+        Establishment establishment = establishmentEntity(establishmentId);
+        user.requireSite(establishment.getOrganizationId());
+        ServiceQueue queue = new ServiceQueue(establishment, request.name(), request.prefix(),
+                request.avgServiceMinutes(), request.counter());
+        return toView(queues.save(queue));
+    }
+
+    public QueueView updateQueue(CurrentUser user, Long queueId, QueueRequest request) {
+        user.requireAdmin();
+        ServiceQueue queue = lockedQueue(queueId);
+        user.requireSite(queue.getEstablishment().getOrganizationId());
+        queue.update(request.name(), request.prefix(), request.avgServiceMinutes(), request.counter());
+        return toView(queue);
+    }
+
+    /**
+     * A queue that already handed out tickets is history; it can be closed, not deleted.
+     * The row lock keeps a ticket from being created between the check and the delete.
+     */
+    public void deleteQueue(CurrentUser user, Long queueId) {
+        user.requireAdmin();
+        ServiceQueue queue = lockedQueue(queueId);
+        user.requireSite(queue.getEstablishment().getOrganizationId());
+        if (tickets.existsByQueueId(queueId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "this queue has tickets; it cannot be deleted");
+        }
+        queues.delete(queue);
     }
 
     // ---------------------------------------------------------------- client side
@@ -161,6 +234,16 @@ public class QueueService {
 
     private ServiceQueue queue(Long id) {
         return queues.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown queue " + id));
+    }
+
+    private Establishment establishmentEntity(String id) {
+        return establishments.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown establishment " + id));
+    }
+
+    private ServiceQueue lockedQueue(Long id) {
+        return queues.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown queue " + id));
     }
 

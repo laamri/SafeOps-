@@ -3,6 +3,7 @@ package ma.ensa.queueservice.web;
 import ma.ensa.queueservice.domain.QueueService;
 import ma.ensa.queueservice.security.CurrentUserResolver;
 import ma.ensa.queueservice.web.Views.CounterView;
+import ma.ensa.queueservice.web.Views.EstablishmentView;
 import ma.ensa.queueservice.web.Views.QueueView;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,8 +15,11 @@ import java.util.List;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -58,5 +62,44 @@ class QueueControllerTest {
                         .contentType("application/json")
                         .content("{}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void anAdminCreatesAnEstablishment() throws Exception {
+        when(service.createEstablishment(any(), any())).thenReturn(new EstablishmentView("annex", "Annexe",
+                "Clinique", "Casablanca", "AX", null, null, "Rue 2", "08:30", "16:30", true, 0, 0, List.of()));
+
+        mockMvc.perform(post("/api/establishments")
+                        .header("X-Auth-Subject", "admin-1")
+                        .header("X-Auth-Roles", "admin")
+                        .contentType("application/json")
+                        .content("{\"id\":\"annex\",\"name\":\"Annexe\",\"category\":\"Clinique\","
+                                + "\"city\":\"Casablanca\",\"shortName\":\"AX\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value("annex"));
+
+        verify(service).createEstablishment(any(), any());
+    }
+
+    @Test
+    void aQueuePrefixMustBeShortAndCapitalised() throws Exception {
+        mockMvc.perform(post("/api/establishments/clinic/queues")
+                        .header("X-Auth-Subject", "admin-1")
+                        .header("X-Auth-Roles", "admin")
+                        .contentType("application/json")
+                        .content("{\"name\":\"Retrait\",\"prefix\":\"abcd\",\"avgServiceMinutes\":4,\"counter\":\"G\"}"))
+                .andExpect(status().isBadRequest());
+
+        verify(service, never()).createQueue(any(), any(), any());
+    }
+
+    @Test
+    void deletingAQueueAnswersNoContent() throws Exception {
+        mockMvc.perform(delete("/api/queues/1")
+                        .header("X-Auth-Subject", "admin-1")
+                        .header("X-Auth-Roles", "admin"))
+                .andExpect(status().isNoContent());
+
+        verify(service).deleteQueue(any(), eq(1L));
     }
 }

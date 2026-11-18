@@ -78,6 +78,19 @@ public class Establishment {
 
     void reactivate() { this.active = true; }
 
+    void updateProfile(String name, String category, String city, String shortName,
+                       String color, String tint, String address, String opensAt, String closesAt) {
+        this.name = name;
+        this.category = category;
+        this.city = city;
+        this.shortName = shortName;
+        this.color = color;
+        this.tint = tint;
+        this.address = address;
+        this.opensAt = opensAt;
+        this.closesAt = closesAt;
+    }
+
     void assignOrganizationId(String organizationId) {
         this.organizationId = organizationId;
     }

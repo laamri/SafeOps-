@@ -66,6 +66,13 @@ public class ServiceQueue {
         this.open = open;
     }
 
+    void update(String name, String prefix, int avgServiceMinutes, String counter) {
+        this.name = name;
+        this.prefix = prefix;
+        this.avgServiceMinutes = avgServiceMinutes;
+        this.counter = counter;
+    }
+
     public Long getId() { return id; }
     public Establishment getEstablishment() { return establishment; }
     public String getName() { return name; }

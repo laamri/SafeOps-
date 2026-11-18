@@ -4,11 +4,17 @@ import jakarta.validation.Valid;
 import ma.ensa.queueservice.domain.QueueService;
 import ma.ensa.queueservice.security.CurrentUser;
 import ma.ensa.queueservice.web.Views.CounterView;
+import ma.ensa.queueservice.web.Views.EstablishmentCreateRequest;
+import ma.ensa.queueservice.web.Views.EstablishmentStatusRequest;
+import ma.ensa.queueservice.web.Views.EstablishmentUpdateRequest;
 import ma.ensa.queueservice.web.Views.EstablishmentView;
+import ma.ensa.queueservice.web.Views.QueueRequest;
 import ma.ensa.queueservice.web.Views.QueueStatusRequest;
+import ma.ensa.queueservice.web.Views.QueueView;
 import ma.ensa.queueservice.web.Views.TakeTicketRequest;
 import ma.ensa.queueservice.web.Views.TicketView;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -48,6 +54,46 @@ public class QueueController {
     @GetMapping("/establishments/{id}")
     public EstablishmentView establishment(CurrentUser user, @PathVariable String id) {
         return service.establishment(id);
+    }
+
+    // ---- tenant administration (/tenant, "Sites" and "Files"): admin role, own site only
+
+    @PostMapping("/establishments")
+    @ResponseStatus(HttpStatus.CREATED)
+    public EstablishmentView createEstablishment(CurrentUser user,
+                                                 @Valid @RequestBody EstablishmentCreateRequest request) {
+        return service.createEstablishment(user, request);
+    }
+
+    @PutMapping("/establishments/{id}")
+    public EstablishmentView updateEstablishment(CurrentUser user, @PathVariable String id,
+                                                 @Valid @RequestBody EstablishmentUpdateRequest request) {
+        return service.updateEstablishment(user, id, request);
+    }
+
+    @PutMapping("/establishments/{id}/status")
+    public EstablishmentView setEstablishmentActive(CurrentUser user, @PathVariable String id,
+                                                    @Valid @RequestBody EstablishmentStatusRequest request) {
+        return service.setEstablishmentActive(user, id, request.active());
+    }
+
+    @PostMapping("/establishments/{id}/queues")
+    @ResponseStatus(HttpStatus.CREATED)
+    public QueueView createQueue(CurrentUser user, @PathVariable String id,
+                                 @Valid @RequestBody QueueRequest request) {
+        return service.createQueue(user, id, request);
+    }
+
+    @PutMapping("/queues/{id}")
+    public QueueView updateQueue(CurrentUser user, @PathVariable Long id,
+                                 @Valid @RequestBody QueueRequest request) {
+        return service.updateQueue(user, id, request);
+    }
+
+    @DeleteMapping("/queues/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteQueue(CurrentUser user, @PathVariable Long id) {
+        service.deleteQueue(user, id);
     }
 
     @PostMapping("/tickets")

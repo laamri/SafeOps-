@@ -36,6 +36,12 @@ public record CurrentUser(String subject, String username, Set<String> roles, Se
         }
     }
 
+    public void requireAdmin() {
+        if (!hasAnyRole(ADMIN)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "admin role required");
+        }
+    }
+
     public void requireSite(String siteId) {
         if (siteId == null || !siteIds.contains(siteId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "no access to this establishment");

@@ -1,5 +1,10 @@
 package ma.ensa.queueservice.web;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import ma.ensa.queueservice.domain.TicketStatus;
 
 import java.time.Instant;
@@ -75,10 +80,52 @@ public final class Views {
     ) {
     }
 
-    public record TakeTicketRequest(@jakarta.validation.constraints.NotNull Long queueId) {
+    public record TakeTicketRequest(@NotNull Long queueId) {
     }
 
-    public record QueueStatusRequest(@jakarta.validation.constraints.NotNull Boolean open) {
+    public record QueueStatusRequest(@NotNull Boolean open) {
+    }
+
+    /**
+     * A site is created with the id of the Keycloak tenant group it belongs to: the caller can
+     * only create the row for a site already in their token claims.
+     */
+    public record EstablishmentCreateRequest(
+            @NotBlank @Pattern(regexp = "[a-z0-9][a-z0-9-]{1,63}", message = "id must be a slug") String id,
+            @NotBlank String name,
+            @NotBlank String category,
+            @NotBlank String city,
+            @NotBlank String shortName,
+            String color,
+            String tint,
+            String address,
+            String opensAt,
+            String closesAt
+    ) {
+    }
+
+    public record EstablishmentUpdateRequest(
+            @NotBlank String name,
+            @NotBlank String category,
+            @NotBlank String city,
+            @NotBlank String shortName,
+            String color,
+            String tint,
+            String address,
+            String opensAt,
+            String closesAt
+    ) {
+    }
+
+    public record EstablishmentStatusRequest(@NotNull Boolean active) {
+    }
+
+    public record QueueRequest(
+            @NotBlank String name,
+            @NotBlank @Pattern(regexp = "[A-Z0-9]{1,4}", message = "prefix is 1 to 4 capital letters or digits") String prefix,
+            @NotNull @Min(1) @Max(240) Integer avgServiceMinutes,
+            @NotBlank String counter
+    ) {
     }
 
     /**
