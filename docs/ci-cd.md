@@ -51,3 +51,20 @@ read-only and scoped to the target project/package.
 
 `staff-admin` is built and scanned like the other backend images but has no Kubernetes manifest
 yet, so the kind smoke test and the deploy jobs do not include it; it runs in docker compose only.
+
+## Playwright artifacts and credentials
+
+The E2E job uploads `e2e/playwright-report` and `e2e/test-results` on every run. Playwright
+traces are disabled (`trace: 'off'`): a trace stores request headers, including
+`Authorization: Bearer …`, and the Keycloak token response body. Videos are disabled
+(`video: 'off'`) because the failure screenshot already shows the failing page. No HAR is
+recorded. Screenshots remain `only-on-failure`; they show rendered pages only, and the app never
+renders a bearer token.
+
+Before uploading, the job scans both artifact directories and fails if any file contains
+`Authorization:`, a `Bearer …` value or a JWT. Run the same check locally after `bash e2e/run.sh`:
+
+```sh
+grep -ralE 'Authorization:|Bearer [A-Za-z0-9._~+/-]+|eyJ[A-Za-z0-9_-]{10,}' \
+  e2e/playwright-report e2e/test-results || echo "no credentials in artifacts"
+```

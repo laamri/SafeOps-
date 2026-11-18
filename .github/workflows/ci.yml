@@ -117,6 +117,14 @@ jobs:
       - name: Clean test rows
         if: always()
         run: E2E_POSTGRES_CONTAINER=tiko-e2e-postgres-1 E2E_KEYCLOAK_CONTAINER=tiko-e2e-keycloak-1 bash e2e/cleanup.sh
+      - name: Verify artifacts contain no credentials
+        if: always()
+        run: |
+          if grep -ralE 'Authorization:|Bearer [A-Za-z0-9._~+/-]+|eyJ[A-Za-z0-9_-]{10,}' \
+               e2e/playwright-report e2e/test-results 2>/dev/null; then
+            echo "credential material found in Playwright artifacts"; exit 1
+          fi
+          echo "no Authorization header or bearer/JWT found in Playwright artifacts"
       - name: Upload Playwright artifacts
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

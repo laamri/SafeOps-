@@ -14,9 +14,11 @@ export default defineConfig({
   reporter: [['list'], ['html', { open: 'never', outputFolder: 'playwright-report' }]],
   use: {
     baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:13001',
-    trace: 'retain-on-failure',
+    // traces record request headers (Authorization: Bearer ...) and the Keycloak token
+    // response body, and videos add nothing that the failure screenshot does not show
+    trace: 'off',
     screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    video: 'off',
     launchOptions: process.env.E2E_HOST_RESOLVER
       ? { args: [`--host-resolver-rules=MAP localhost ${process.env.E2E_HOST_RESOLVER}`] }
       : {},
