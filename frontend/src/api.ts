@@ -8,6 +8,7 @@ export type Queue = { id: number; name: string; prefix: string; counter: string;
 export type Establishment = {
   id: string; name: string; category: string; city: string; shortName: string; color: string; tint: string;
   address: string; opensAt: string; closesAt: string; waiting: number; estimatedWaitMinutes: number; queues: Queue[];
+  active: boolean;
 };
 export type TicketStatus = 'WAITING' | 'CALLED' | 'SERVED' | 'NO_SHOW' | 'CANCELLED';
 export type Ticket = {

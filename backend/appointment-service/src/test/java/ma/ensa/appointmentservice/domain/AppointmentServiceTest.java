@@ -3,6 +3,7 @@ package ma.ensa.appointmentservice.domain;
 import ma.ensa.appointmentservice.security.CurrentUser;
 import ma.ensa.appointmentservice.web.Views.CreateAppointmentRequest;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -13,6 +14,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -112,6 +114,15 @@ class AppointmentServiceTest {
                 () -> service.cancel(owner, UUID.randomUUID()));
 
         assertEquals(409, exception.getStatusCode().value());
+    }
+
+    @Disabled("known gap until Slice 3: appointment-service cannot verify establishment.active without service-to-service auth to queue-service")
+    @Test
+    void rejectsAppointmentOnASuspendedEstablishmentUntilSlice3() {
+        // Expected once Slice 3 gives appointment-service a service credential: a suspended
+        // establishment (queue-service answers active=false) must make this POST return 409 and
+        // persist nothing. Today the service has no way to ask, which is the documented gap.
+        fail("appointment-service does not consult queue-service; see docs/known-gaps.md");
     }
 
     private CreateAppointmentRequest request(Instant startsAt) {
