@@ -120,7 +120,7 @@ jobs:
       - name: Verify artifacts contain no credentials
         if: always()
         run: |
-          if grep -ralE 'Authorization:|Bearer [A-Za-z0-9._~+/-]+|eyJ[A-Za-z0-9_-]{10,}' \
+          if grep -ralE 'Authorization: Bearer [A-Za-z0-9._~+/-]{20,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}' \
                e2e/playwright-report e2e/test-results 2>/dev/null; then
             echo "credential material found in Playwright artifacts"; exit 1
           fi

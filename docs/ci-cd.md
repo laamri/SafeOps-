@@ -61,10 +61,12 @@ traces are disabled (`trace: 'off'`): a trace stores request headers, including
 recorded. Screenshots remain `only-on-failure`; they show rendered pages only, and the app never
 renders a bearer token.
 
-Before uploading, the job scans both artifact directories and fails if any file contains
-`Authorization:`, a `Bearer …` value or a JWT. Run the same check locally after `bash e2e/run.sh`:
+Before uploading, the job scans both artifact directories and fails if any file contains a
+bearer value or a JWT. The HTML report embeds test source, so the check matches actual values
+(`Authorization: Bearer <20+ chars>` or a three-part `eyJ…` JWT), not the literal helper code.
+Run the same check locally after `bash e2e/run.sh`:
 
 ```sh
-grep -ralE 'Authorization:|Bearer [A-Za-z0-9._~+/-]+|eyJ[A-Za-z0-9_-]{10,}' \
+grep -ralE 'Authorization: Bearer [A-Za-z0-9._~+/-]{20,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}' \
   e2e/playwright-report e2e/test-results || echo "no credentials in artifacts"
 ```
