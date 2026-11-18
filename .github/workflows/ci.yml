@@ -51,6 +51,84 @@ jobs:
       - run: npm run build
         working-directory: frontend
 
+  e2e:
+    name: E2E / Playwright
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Write ephemeral environment
+        run: |
+          {
+            echo "KEYCLOAK_PORT=19080"
+            echo "GATEWAY_PORT=19888"
+            echo "FRONTEND_PORT=13001"
+            echo "FRONTEND_DEV_PORT=15173"
+            echo "KC_ADMIN=admin"
+            echo "KC_ADMIN_PASSWORD=$(openssl rand -hex 24)"
+            echo "POSTGRES_SUPERUSER=postgres"
+            echo "POSTGRES_SUPERUSER_PASSWORD=$(openssl rand -hex 24)"
+            echo "POSTGRES_BOOTSTRAP_DB=tiko_bootstrap"
+            echo "QUEUE_DB_NAME=tiko"
+            echo "QUEUE_DB_USER=tiko"
+            echo "QUEUE_DB_PASSWORD=$(openssl rand -hex 24)"
+            echo "APPOINTMENTS_DB_NAME=appointments"
+            echo "APPOINTMENTS_DB_USER=appointments"
+            echo "APPOINTMENTS_DB_PASSWORD=$(openssl rand -hex 24)"
+            echo "PROFILES_DB_NAME=profiles"
+            echo "PROFILES_DB_USER=profile_notifications"
+            echo "PROFILES_DB_PASSWORD=$(openssl rand -hex 24)"
+            echo "TIKO_CLIENT_PASSWORD=$(openssl rand -hex 24)"
+            echo "TIKO_AGENT_PASSWORD=$(openssl rand -hex 24)"
+            echo "TIKO_ADMIN_PASSWORD=$(openssl rand -hex 24)"
+            echo "TIKO_AGENCY_AGENT_PASSWORD=$(openssl rand -hex 24)"
+            echo "TIKO_NOSITE_AGENT_PASSWORD=$(openssl rand -hex 24)"
+          } > .env
+      - name: Build and start the stack
+        run: COMPOSE_PROJECT_NAME=tiko-e2e docker compose up -d
+      - name: Wait for the stack
+        run: |
+          for i in $(seq 1 120); do
+            init=$(docker inspect -f '{{.State.Status}}/{{.State.ExitCode}}' tiko-e2e-keycloak-init-1 2>/dev/null || echo missing)
+            n=$(for c in postgres keycloak queue-service appointment-service profile-notification-service api-gateway frontend; do
+              docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "tiko-e2e-$c-1" 2>/dev/null || echo missing
+            done | grep -c '^healthy$' || true)
+            if [ "$init" = "exited/0" ] && [ "$n" = "7" ]; then echo "stack ready"; exit 0; fi
+            sleep 5
+          done
+          COMPOSE_PROJECT_NAME=tiko-e2e docker compose ps
+          exit 1
+      - name: Build the test image
+        run: docker build -t tiko/e2e:ci e2e
+      - name: Run Playwright
+        run: |
+          set -a; . ./.env; set +a
+          mkdir -p e2e/test-results e2e/playwright-report
+          docker run --rm --network host \
+            -e E2E_CLIENT_PASSWORD="$TIKO_CLIENT_PASSWORD" \
+            -e E2E_AGENT_PASSWORD="$TIKO_AGENT_PASSWORD" \
+            -e E2E_ADMIN_PASSWORD="$TIKO_ADMIN_PASSWORD" \
+            -e E2E_AGENCY_AGENT_PASSWORD="$TIKO_AGENCY_AGENT_PASSWORD" \
+            -e E2E_NOSITE_AGENT_PASSWORD="$TIKO_NOSITE_AGENT_PASSWORD" \
+            -e E2E_OUTPUT_DIR=/e2e/test-results \
+            -v "$PWD/e2e/test-results:/e2e/test-results" \
+            -v "$PWD/e2e/playwright-report:/e2e/playwright-report" \
+            tiko/e2e:ci
+      - name: Clean test rows
+        if: always()
+        run: E2E_POSTGRES_CONTAINER=tiko-e2e-postgres-1 bash e2e/cleanup.sh
+      - name: Upload Playwright artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report
+            e2e/test-results
+          if-no-files-found: ignore
+      - name: Stop the stack
+        if: always()
+        run: COMPOSE_PROJECT_NAME=tiko-e2e docker compose down -v
+
   gitleaks:
     name: Gitleaks
     runs-on: ubuntu-latest

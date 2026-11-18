@@ -50,6 +50,7 @@ services:
       TIKO_AGENT_PASSWORD: ${TIKO_AGENT_PASSWORD}
       TIKO_ADMIN_PASSWORD: ${TIKO_ADMIN_PASSWORD}
       TIKO_AGENCY_AGENT_PASSWORD: ${TIKO_AGENCY_AGENT_PASSWORD}
+      TIKO_NOSITE_AGENT_PASSWORD: ${TIKO_NOSITE_AGENT_PASSWORD}
     volumes:
       - ./keycloak/bootstrap.sh:/bootstrap.sh:ro
       - gateway-secrets:/bootstrap

@@ -7,7 +7,8 @@
 #   audience "tiko-api"    added to both clients' access tokens; the gateway requires it
 #   groups                 /tenants/clinic and /tenants/agency; agent + admin in clinic,
 #                          agent-agency in agency
-#   users                  client / agent / admin / agent-agency accounts (passwords from .env)
+#   users                  client / agent / admin / agent-agency / agent-nosite accounts
+#                          (passwords from .env; agent-nosite has no site and is an E2E fixture)
 #
 # Then it reads tiko-backend's generated secret back from Keycloak and writes it to
 # $OUT_DIR/gateway.properties, which the gateway loads through spring.config.import.
@@ -268,6 +269,8 @@ ensure_user client "$TIKO_CLIENT_PASSWORD" client@tiko.test Sara   Benali client
 ensure_user agent  "$TIKO_AGENT_PASSWORD"  agent@tiko.test  Mehdi  Karim  agent
 ensure_user admin  "$TIKO_ADMIN_PASSWORD"  admin@tiko.test  Lina   Berrada admin
 ensure_user agent-agency "$TIKO_AGENCY_AGENT_PASSWORD" agent.agency@tiko.test Yasmine ElAmrani agent
+# staff account deliberately without a tenant site; the E2E fail-closed check uses it
+ensure_user agent-nosite "$TIKO_NOSITE_AGENT_PASSWORD" agent.nosite@tiko.test No Site agent
 kc add-roles -r "$REALM" --uusername admin --rolename agent
 ensure_user_group agent /tenants/clinic
 ensure_user_group admin /tenants/clinic
