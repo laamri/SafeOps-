@@ -56,14 +56,7 @@ All 4 items have been verified as absent from the repository root. The active bu
 ### Audit Findings
 - **Current state**: `.env` is untracked by Git (`git ls-files .env` returns nothing) and is ignored by `.gitignore:1`.
 - **Template safety**: `.env.example` and `k8s/secret.yaml` use strictly placeholder values.
-- **Historical Git exposure**:
-  > [!WARNING]
-  > Inspection of the commit log (`git log --all --oneline -- .env`) shows that `.env` was committed in historical commits:
-  > - `a6abd8e` (*my last commit*)
-  > - `dacebd0` (*Bootstrap tenant-aware Keycloak users*)
-  > - `6ccff04` (*my first commit*)
-  >
-  > **Action required**: All development passwords and secrets committed in those revisions must be treated as compromised and rotated before production use.
+- **Git history**: verified with `git log --all --diff-filter=AMD --name-only -- .env` (no output): `.env` was never committed on any branch. An earlier automated claim that it appeared in commits a6abd8e, dacebd0 and 6ccff04 was a misreading of the log and is retracted. No credential rotation is required because of git history.
 
 ---
 
