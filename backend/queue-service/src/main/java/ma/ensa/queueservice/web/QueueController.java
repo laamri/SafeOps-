@@ -11,8 +11,10 @@ import ma.ensa.queueservice.web.Views.EstablishmentView;
 import ma.ensa.queueservice.web.Views.QueueRequest;
 import ma.ensa.queueservice.web.Views.QueueStatusRequest;
 import ma.ensa.queueservice.web.Views.QueueView;
+import ma.ensa.queueservice.web.Views.ScheduleRequest;
 import ma.ensa.queueservice.web.Views.TakeTicketRequest;
 import ma.ensa.queueservice.web.Views.TicketView;
+import ma.ensa.queueservice.web.Views.WeeklyHoursView;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -75,6 +77,18 @@ public class QueueController {
     public EstablishmentView setEstablishmentActive(CurrentUser user, @PathVariable String id,
                                                     @Valid @RequestBody EstablishmentStatusRequest request) {
         return service.setEstablishmentActive(user, id, request.active());
+    }
+
+    /** The establishment's weekly calendar; PUT replaces all intervals. */
+    @GetMapping("/establishments/{id}/hours")
+    public List<WeeklyHoursView> schedule(CurrentUser user, @PathVariable String id) {
+        return service.schedule(user, id);
+    }
+
+    @PutMapping("/establishments/{id}/hours")
+    public List<WeeklyHoursView> replaceSchedule(CurrentUser user, @PathVariable String id,
+                                                 @Valid @RequestBody ScheduleRequest request) {
+        return service.replaceSchedule(user, id, request);
     }
 
     @PostMapping("/establishments/{id}/queues")

@@ -36,7 +36,7 @@ class QueueTenantTest {
         EstablishmentRepository establishments = mock(EstablishmentRepository.class);
         queues = mock(ServiceQueueRepository.class);
         tickets = mock(TicketRepository.class);
-        service = new QueueService(establishments, queues, tickets);
+        service = new QueueService(establishments, queues, tickets, mock(WeeklyHoursRepository.class));
 
         Establishment clinic = new Establishment("clinic", "Clinique Al Amal", "Clinique", "Casablanca", "CA",
                 "#41a98a", "#e0f4ec", "Rue Abou Alaa Zahar, Casablanca", "08:30", "16:30");

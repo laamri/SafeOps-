@@ -4,7 +4,10 @@ import keycloak from './keycloak';
 // to the api-gateway, which verifies the token and routes to the queue-service.
 const BASE = import.meta.env.VITE_API_BASE_URL ?? '';
 
-export type Queue = { id: number; name: string; prefix: string; counter: string; waiting: number; estimatedWaitMinutes: number; open: boolean };
+export type Queue = { id: number; name: string; prefix: string; counter: string; avgServiceMinutes: number; waiting: number; estimatedWaitMinutes: number; open: boolean };
+export type WeeklyHours = { dayOfWeek: number; opensAt: string; closesAt: string };
+export type EstablishmentInput = Pick<Establishment, 'name' | 'category' | 'city' | 'shortName' | 'color' | 'tint' | 'address' | 'opensAt' | 'closesAt'>;
+export type QueueInput = { name: string; prefix: string; avgServiceMinutes: number; counter: string };
 export type Establishment = {
   id: string; name: string; category: string; city: string; shortName: string; color: string; tint: string;
   address: string; opensAt: string; closesAt: string; waiting: number; estimatedWaitMinutes: number; queues: Queue[];
@@ -86,6 +89,17 @@ const put = <T>(path: string, body: unknown) =>
 export const api = {
   establishments: () => request<Establishment[]>('/establishments'),
   establishment: (id: string) => request<Establishment>(`/establishments/${encodeURIComponent(id)}`),
+  updateEstablishment: (id: string, input: EstablishmentInput) =>
+    put<Establishment>(`/establishments/${encodeURIComponent(id)}`, input),
+  setEstablishmentActive: (id: string, active: boolean) =>
+    put<Establishment>(`/establishments/${encodeURIComponent(id)}/status`, { active }),
+  schedule: (id: string) => request<WeeklyHours[]>(`/establishments/${encodeURIComponent(id)}/hours`),
+  replaceSchedule: (id: string, intervals: WeeklyHours[]) =>
+    put<WeeklyHours[]>(`/establishments/${encodeURIComponent(id)}/hours`, { intervals }),
+  createQueue: (id: string, input: QueueInput) =>
+    post<Queue>(`/establishments/${encodeURIComponent(id)}/queues`, input),
+  updateQueue: (queueId: number, input: QueueInput) => put<Queue>(`/queues/${queueId}`, input),
+  deleteQueue: (queueId: number) => request<void>(`/queues/${queueId}`, { method: 'DELETE' }),
   takeTicket: (queueId: number) => post<Ticket>('/tickets', { queueId }),
   myTickets: () => request<Ticket[]>('/tickets/me'),
   ticket: (id: string) => request<Ticket>(`/tickets/${encodeURIComponent(id)}`),

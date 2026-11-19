@@ -5,6 +5,8 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
+import jakarta.validation.Valid;
 import ma.ensa.queueservice.domain.TicketStatus;
 
 import java.time.Instant;
@@ -43,6 +45,7 @@ public final class Views {
             String name,
             String prefix,
             String counter,
+            int avgServiceMinutes,
             long waiting,
             long estimatedWaitMinutes,
             boolean open
@@ -118,6 +121,23 @@ public final class Views {
     }
 
     public record EstablishmentStatusRequest(@NotNull Boolean active) {
+    }
+
+    /** One opening interval; a day with a lunch break has two. dayOfWeek is ISO (1 = Monday). */
+    public record WeeklyHoursView(int dayOfWeek, String opensAt, String closesAt) {
+    }
+
+    public record WeeklyHoursRequest(
+            @NotNull @Min(1) @Max(7) Integer dayOfWeek,
+            @NotBlank @Pattern(regexp = "([01]\\d|2[0-3]):[0-5]\\d", message = "opensAt must be HH:mm") String opensAt,
+            @NotBlank @Pattern(regexp = "([01]\\d|2[0-3]):[0-5]\\d", message = "closesAt must be HH:mm") String closesAt
+    ) {
+    }
+
+    /** Replaces the whole weekly calendar: an empty list clears it. */
+    public record ScheduleRequest(
+            @NotNull @Size(max = 28) List<@Valid WeeklyHoursRequest> intervals
+    ) {
     }
 
     public record QueueRequest(

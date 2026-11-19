@@ -39,4 +39,15 @@ public class WeeklyHours {
 
     protected WeeklyHours() {
     }
+
+    public WeeklyHours(Establishment establishment, short dayOfWeek, LocalTime opensAt, LocalTime closesAt) {
+        this.establishment = establishment;
+        this.dayOfWeek = dayOfWeek;
+        this.opensAt = opensAt;
+        this.closesAt = closesAt;
+    }
+
+    public short getDayOfWeek() { return dayOfWeek; }
+    public LocalTime getOpensAt() { return opensAt; }
+    public LocalTime getClosesAt() { return closesAt; }
 }

@@ -4,11 +4,15 @@ import ma.ensa.queueservice.security.CurrentUser;
 import ma.ensa.queueservice.web.Views.EstablishmentCreateRequest;
 import ma.ensa.queueservice.web.Views.EstablishmentUpdateRequest;
 import ma.ensa.queueservice.web.Views.QueueRequest;
+import ma.ensa.queueservice.web.Views.ScheduleRequest;
+import ma.ensa.queueservice.web.Views.WeeklyHoursRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
@@ -27,6 +31,7 @@ class QueueCrudTest {
     private EstablishmentRepository establishments;
     private ServiceQueueRepository queues;
     private TicketRepository tickets;
+    private WeeklyHoursRepository hours;
     private QueueService service;
     private Establishment clinic;
     private Establishment agency;
@@ -44,7 +49,8 @@ class QueueCrudTest {
         establishments = mock(EstablishmentRepository.class);
         queues = mock(ServiceQueueRepository.class);
         tickets = mock(TicketRepository.class);
-        service = new QueueService(establishments, queues, tickets);
+        hours = mock(WeeklyHoursRepository.class);
+        service = new QueueService(establishments, queues, tickets, hours);
 
         clinic = new Establishment("clinic", "Clinique Al Amal", "Clinique", "Casablanca", "CA",
                 "#41a98a", "#e0f4ec", "Rue Abou Alaa Zahar, Casablanca", "08:30", "16:30");
@@ -223,5 +229,82 @@ class QueueCrudTest {
         service.deleteQueue(clinicAdmin, 1L);
 
         verify(queues).delete(clinicQueue);
+    }
+
+    @Test
+    void clinicAdminReadsTheClinicSchedule() {
+        when(hours.findByEstablishmentIdOrderByDayOfWeekAscOpensAtAsc("clinic")).thenReturn(List.of(
+                new WeeklyHours(clinic, (short) 1, LocalTime.of(8, 30), LocalTime.of(12, 30)),
+                new WeeklyHours(clinic, (short) 1, LocalTime.of(13, 30), LocalTime.of(16, 30))));
+
+        var schedule = service.schedule(clinicAdmin, "clinic");
+
+        assertEquals(1, schedule.get(0).dayOfWeek());
+        assertEquals("08:30", schedule.get(0).opensAt());
+        assertEquals("16:30", schedule.get(1).closesAt());
+    }
+
+    @Test
+    void clinicAdminCannotReadOrWriteTheAgencySchedule() {
+        assertEquals(403, statusOf(() -> service.schedule(clinicAdmin, "agency")));
+        assertEquals(403, statusOf(() -> service.replaceSchedule(clinicAdmin, "agency",
+                schedule(interval(1, "08:30", "16:30")))));
+        verify(hours, never()).deleteByEstablishmentId(any());
+        verify(hours, never()).saveAll(any());
+    }
+
+    @Test
+    void agencyAdminCannotWriteTheClinicSchedule() {
+        assertEquals(403, statusOf(() -> service.replaceSchedule(agencyAdmin, "clinic",
+                schedule(interval(1, "08:30", "16:30")))));
+        verify(hours, never()).deleteByEstablishmentId(any());
+    }
+
+    @Test
+    void clinicAdminReplacesTheWholeClinicSchedule() {
+        var captor = org.mockito.ArgumentCaptor.forClass(List.class);
+        when(hours.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var saved = service.replaceSchedule(clinicAdmin, "clinic", schedule(
+                interval(2, "14:00", "18:00"),
+                interval(1, "08:30", "12:30"),
+                interval(1, "13:30", "16:30")));
+
+        verify(hours).deleteByEstablishmentId("clinic");
+        verify(hours).saveAll(captor.capture());
+        var entities = (List<WeeklyHours>) captor.getValue();
+        assertEquals(List.of((short) 1, (short) 1, (short) 2),
+                entities.stream().map(WeeklyHours::getDayOfWeek).toList());
+        assertEquals("08:30", saved.get(0).opensAt());
+    }
+
+    @Test
+    void overlappingIntervalsAreRefused() {
+        assertEquals(400, statusOf(() -> service.replaceSchedule(clinicAdmin, "clinic", schedule(
+                interval(1, "08:30", "12:30"),
+                interval(1, "12:00", "16:30")))));
+        verify(hours, never()).deleteByEstablishmentId(any());
+    }
+
+    @Test
+    void backwardsIntervalsAreRefused() {
+        assertEquals(400, statusOf(() -> service.replaceSchedule(clinicAdmin, "clinic",
+                schedule(interval(1, "16:30", "08:30")))));
+        verify(hours, never()).deleteByEstablishmentId(any());
+    }
+
+    @Test
+    void anAgentCannotEditTheSchedule() {
+        assertEquals(403, statusOf(() -> service.replaceSchedule(clinicAgent, "clinic",
+                schedule(interval(1, "08:30", "16:30")))));
+        verify(hours, never()).deleteByEstablishmentId(any());
+    }
+
+    private static ScheduleRequest schedule(WeeklyHoursRequest... intervals) {
+        return new ScheduleRequest(List.of(intervals));
+    }
+
+    private static WeeklyHoursRequest interval(int day, String opensAt, String closesAt) {
+        return new WeeklyHoursRequest(day, opensAt, closesAt);
     }
 }

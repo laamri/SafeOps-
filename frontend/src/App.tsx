@@ -3,7 +3,7 @@ import './workspace.css';
 import { useEffect, useState } from 'react';
 import { Link, Route, Switch, useLocation } from 'wouter';
 import { RequireAuth, useAuth } from './auth';
-import { api, ApiError, ordinal, type Appointment as Appt, type Counter, type Establishment as Est, type Notification as UserNotification, type Preferences as UserPreferences, type StaffInvitation, type StaffMember, type Ticket as Tk } from './api';
+import { api, ApiError, ordinal, type Appointment as Appt, type Counter, type Establishment as Est, type Notification as UserNotification, type Preferences as UserPreferences, type Queue, type QueueInput, type StaffInvitation, type StaffMember, type Ticket as Tk, type WeeklyHours } from './api';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUpRight, Bell, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clock3, FileText, Globe2, LayoutDashboard, LifeBuoy, List, LockKeyhole, LogOut, MapPin, Menu, MoreHorizontal, Plus, Search, Settings2, ShieldCheck, Smartphone, Sparkles, Ticket, Users, X, Building2, Activity, TrendingUp, Zap, BarChart3, UserRound, ChevronUp, RotateCcw, Eye, SlidersHorizontal } from 'lucide-react';
 
 type Tenant = string;
@@ -20,8 +20,9 @@ const providers = [
 // ---- data from the queue-service (through the api-gateway)
 function useEstablishments() {
  const [list,setList]=useState<Est[]|null>(null);const [error,setError]=useState('');
- useEffect(()=>{api.establishments().then(setList).catch(e=>setError(e.message))},[]);
- return {list,error};
+ const reload=()=>api.establishments().then(l=>{setList(l);setError('')}).catch(e=>setError(e.message));
+ useEffect(()=>{reload()},[]);
+ return {list,error,reload};
 }
 function useMyTickets(pollMs=0) {
  const [tickets,setTickets]=useState<Tk[]|null>(null);const [offline,setOffline]=useState(false);
@@ -243,10 +244,107 @@ function TenantAgents({org}:{org:Est}) {
  {inviteOpen&&<div className="overlay"><form className="confirm-modal glass create-modal" onSubmit={submit}><button type="button" className="modal-x" onClick={()=>setInviteOpen(false)}><X size={17}/></button><div className="label">ESPACE ÉTABLISSEMENT</div><h2>Ajouter un agent</h2><label>Prénom<input required name="firstName" data-testid="agents-first-name" placeholder="Ex. Salma"/></label><label>Nom<input required name="lastName" data-testid="agents-last-name" placeholder="Ex. Amrani"/></label><label>Identifiant<input required name="username" data-testid="agents-username" pattern="[a-z0-9][a-z0-9._-]{2,63}" title="lettres minuscules, chiffres, point, tiret ou underscore" placeholder="ex. salma.amrani"/></label><label>E-mail<input required type="email" name="email" data-testid="agents-email" placeholder="nom@exemple.ma"/></label><div className="modal-actions"><button type="button" className="btn-light" onClick={()=>setInviteOpen(false)}>Annuler</button><button type="submit" className="btn-teal" data-testid="agents-submit" disabled={inviting}>{inviting?'Création…':'Créer le compte'}</button></div></form></div>}
  </>;
 }
+const DAYS: [string, string][] = [['1','Lun.'],['2','Mar.'],['3','Mer.'],['4','Jeu.'],['5','Ven.'],['6','Sam.'],['7','Dim.']];
+const dayName = (day: number) => DAYS.find(([value]) => Number(value) === day)?.[1] ?? String(day);
+
+function TenantSites({sites,reload}:{sites:Est[];reload:()=>Promise<void>}) {
+ const [editing,setEditing]=useState<Est|null>(null);const [busy,setBusy]=useState(false);const [error,setError]=useState('');
+ const toggle=(site:Est)=>{setBusy(true);setError('');api.setEstablishmentActive(site.id,!site.active).then(()=>reload()).catch(e=>setError(errorText(e))).finally(()=>setBusy(false))};
+ const save=(e:React.FormEvent<HTMLFormElement>)=>{
+  e.preventDefault();if(!editing)return;
+  const data=new FormData(e.currentTarget);
+  setBusy(true);setError('');
+  api.updateEstablishment(editing.id,{
+   name:String(data.get('name')??'').trim(),category:String(data.get('category')??'').trim(),
+   city:String(data.get('city')??'').trim(),shortName:String(data.get('shortName')??'').trim(),
+   address:String(data.get('address')??'').trim(),opensAt:String(data.get('opensAt')??''),
+   closesAt:String(data.get('closesAt')??''),color:editing.color,tint:editing.tint,
+  }).then(()=>{setEditing(null);return reload()}).catch(err=>setError(errorText(err))).finally(()=>setBusy(false));
+ };
+ return <>
+  {error&&<div className="offline-alert" data-testid="sites-error"><Activity size={17}/><div><b>Action impossible</b><span>{error}</span></div></div>}
+  <div className="sites-grid">{sites.map(site=><article className="site-card soft-card" key={site.id} data-testid={`site-card-${site.id}`}>
+   <div className="site-art" style={{background:`linear-gradient(135deg,${site.tint},#f7f7f2)`}}><Building2 size={26}/></div>
+   <div className="site-card-content"><Pill tone={site.active?'green':'amber'}>{site.active?'Ouvert':'Suspendu'}</Pill><h2>{site.name}</h2><p><MapPin size={14}/> {site.address}, {site.city}</p><span>{site.queues.length} file{site.queues.length>1?'s':''} · {site.waiting} en attente · {site.opensAt}–{site.closesAt}</span>
+    <div className="drawer-actions"><button className="text-link" data-testid={`site-edit-${site.id}`} onClick={()=>setEditing(site)}>Modifier le profil <ArrowRight size={14}/></button><button className="outline-action" data-testid={`site-toggle-${site.id}`} disabled={busy} onClick={()=>toggle(site)}>{site.active?'Suspendre':'Réactiver'}</button></div>
+   </div></article>)}</div>
+  {editing&&<div className="overlay"><form className="confirm-modal glass create-modal" onSubmit={save} data-testid="site-form"><button type="button" className="modal-x" onClick={()=>setEditing(null)}><X size={17}/></button><div className="label">ÉTABLISSEMENT</div><h2>Modifier {editing.name}</h2>
+   <label>Nom<input required name="name" defaultValue={editing.name}/></label>
+   <label>Catégorie<input required name="category" defaultValue={editing.category}/></label>
+   <label>Ville<input required name="city" defaultValue={editing.city}/></label>
+   <label>Nom court<input required name="shortName" defaultValue={editing.shortName}/></label>
+   <label>Adresse<input required name="address" defaultValue={editing.address}/></label>
+   <label>Ouverture<input required type="time" name="opensAt" defaultValue={editing.opensAt}/></label>
+   <label>Fermeture<input required type="time" name="closesAt" defaultValue={editing.closesAt}/></label>
+   <div className="modal-actions"><button type="button" className="btn-light" onClick={()=>setEditing(null)}>Annuler</button><button type="submit" className="btn-teal" data-testid="site-save" disabled={busy}>{busy?'Enregistrement…':'Enregistrer'}</button></div>
+  </form></div>}
+ </>;
+}
+
+function ScheduleEditor({initial,onSave,onClose}:{initial:WeeklyHours[];onSave:(rows:WeeklyHours[])=>void;onClose:()=>void}) {
+ const [rows,setRows]=useState<WeeklyHours[]>(initial.length?initial:[{dayOfWeek:1,opensAt:'08:30',closesAt:'16:30'}]);
+ const update=(index:number,patch:Partial<WeeklyHours>)=>setRows(current=>current.map((row,i)=>i===index?{...row,...patch}:row));
+ const submit=(e:React.FormEvent<HTMLFormElement>)=>{e.preventDefault();onSave(rows)};
+ return <div className="overlay"><form className="confirm-modal glass create-modal" onSubmit={submit} data-testid="schedule-form"><button type="button" className="modal-x" onClick={onClose}><X size={17}/></button><div className="label">DISPONIBILITÉS</div><h2>Horaires de la semaine</h2>
+  {rows.map((row,index)=><div key={index} className="drawer-fact" data-testid={`schedule-row-${index}`}>
+   <select aria-label="Jour" data-testid={`schedule-day-${index}`} value={row.dayOfWeek} onChange={e=>update(index,{dayOfWeek:Number(e.target.value)})}>{DAYS.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select>
+   <input aria-label="Ouverture" data-testid={`schedule-opens-${index}`} type="time" required value={row.opensAt} onChange={e=>update(index,{opensAt:e.target.value})}/>
+   <input aria-label="Fermeture" data-testid={`schedule-closes-${index}`} type="time" required value={row.closesAt} onChange={e=>update(index,{closesAt:e.target.value})}/>
+   <button type="button" className="icon-button" aria-label="Supprimer ce créneau" data-testid={`schedule-remove-${index}`} onClick={()=>setRows(current=>current.filter((_,i)=>i!==index))}><X size={16}/></button>
+  </div>)}
+  <button type="button" className="text-link" data-testid="schedule-add" onClick={()=>setRows(current=>[...current,{dayOfWeek:1,opensAt:'08:30',closesAt:'16:30'}])}><Plus size={15}/> Ajouter un créneau</button>
+  <div className="modal-actions"><button type="button" className="btn-light" onClick={onClose}>Annuler</button><button type="submit" className="btn-teal" data-testid="schedule-save">Enregistrer</button></div>
+ </form></div>;
+}
+
+function TenantFiles({org,reload}:{org:Est;reload:()=>Promise<void>}) {
+ const [schedule,setSchedule]=useState<WeeklyHours[]|null>(null);
+ const [error,setError]=useState('');
+ const [queueModal,setQueueModal]=useState<Queue|'new'|null>(null);
+ const [scheduleOpen,setScheduleOpen]=useState(false);
+ const [toDelete,setToDelete]=useState<Queue|null>(null);
+ const [busy,setBusy]=useState(false);
+ const refreshSchedule=()=>api.schedule(org.id).then(s=>{setSchedule(s);setError('')}).catch(e=>setError(errorText(e)));
+ useEffect(()=>{setSchedule(null);setScheduleOpen(false);refreshSchedule()},[org.id]); // eslint-disable-line react-hooks/exhaustive-deps
+ const saveQueue=(e:React.FormEvent<HTMLFormElement>)=>{
+  e.preventDefault();if(!queueModal)return;
+  const data=new FormData(e.currentTarget);
+  const input:QueueInput={name:String(data.get('name')??'').trim(),prefix:String(data.get('prefix')??'').trim().toUpperCase(),avgServiceMinutes:Number(data.get('avgServiceMinutes')),counter:String(data.get('counter')??'').trim()};
+  setBusy(true);setError('');
+  (queueModal==='new'?api.createQueue(org.id,input):api.updateQueue(queueModal.id,input))
+   .then(()=>{setQueueModal(null);return reload()}).catch(err=>setError(errorText(err))).finally(()=>setBusy(false));
+ };
+ const removeQueue=()=>{if(!toDelete)return;setBusy(true);api.deleteQueue(toDelete.id).then(()=>{setToDelete(null);return reload()}).catch(e=>setError(errorText(e))).finally(()=>setBusy(false))};
+ const saveSchedule=(rows:WeeklyHours[])=>{setBusy(true);setError('');api.replaceSchedule(org.id,rows).then(saved=>{setSchedule(saved);setScheduleOpen(false)}).catch(e=>setError(errorText(e))).finally(()=>setBusy(false))};
+ const editing=queueModal&&queueModal!=='new'?queueModal:null;
+ return <>
+  {error&&<div className="offline-alert" data-testid="files-error"><Activity size={17}/><div><b>Action impossible</b><span>{error}</span></div></div>}
+  <div className="filter-bar soft-card"><div className="filter-date"><FileText size={15}/> {org.name}</div><button className="btn-teal" data-testid="files-create" onClick={()=>setQueueModal('new')}><Plus size={16}/> Créer une file</button></div>
+  <div className="sites-grid">{org.queues.map(queue=><article className="queue-admin-card soft-card" key={queue.id} data-testid={`files-row-${queue.id}`}>
+   <div className="queue-admin-head"><span className="queue-option-icon"><FileText size={18}/></span><Pill tone={queue.open?'green':'amber'}>{queue.open?'Ouverte':'Fermée'}</Pill></div>
+   <h2>{queue.name}</h2><p>Préfixe {queue.prefix} · {queue.counter}</p>
+   <div className="queue-admin-foot"><span><Users size={15}/> {queue.waiting} en attente</span><span><Clock3 size={15}/> {queue.estimatedWaitMinutes} min</span></div>
+   <div className="drawer-actions"><button className="text-link" data-testid={`files-edit-${queue.id}`} onClick={()=>setQueueModal(queue)}>Modifier</button><button className="outline-action" data-testid={`files-delete-${queue.id}`} onClick={()=>setToDelete(queue)}>Supprimer</button></div>
+  </article>)}</div>
+  <section className="schedule-card soft-card"><div className="schedule-head"><div><div className="label">DISPONIBILITÉS</div><h2>Horaires de la semaine</h2></div><button className="icon-button" aria-label="Modifier les horaires" data-testid="schedule-edit" onClick={()=>setScheduleOpen(true)}><Settings2 size={17}/></button></div>
+   {schedule===null?<p className="muted">Chargement des horaires…</p>:schedule.length?<div className="schedule-grid"><div className="schedule-days">{DAYS.map(([value,label])=>{const intervals=schedule.filter(i=>i.dayOfWeek===Number(value));return <div key={value} data-testid={`schedule-show-${value}`}><b>{label}</b>{intervals.length?intervals.map(i=><span className="slot-block" key={`${i.opensAt}-${i.closesAt}`}>{i.opensAt}–{i.closesAt}</span>):<span className="muted">Fermé</span>}</div>})}</div></div>:<p className="muted" data-testid="schedule-empty">Aucun horaire défini.</p>}
+  </section>
+  {queueModal&&<div className="overlay"><form className="confirm-modal glass create-modal" onSubmit={saveQueue} data-testid="files-form"><button type="button" className="modal-x" onClick={()=>setQueueModal(null)}><X size={17}/></button><div className="label">FILE D'ATTENTE</div><h2>{editing?`Modifier ${editing.name}`:'Créer une file'}</h2>
+   <label>Nom<input required name="name" data-testid="files-name" defaultValue={editing?.name??''}/></label>
+   <label>Préfixe<input required name="prefix" data-testid="files-prefix" pattern="[A-Za-z0-9]{1,4}" defaultValue={editing?.prefix??''}/></label>
+   <label>Durée moyenne (min)<input required name="avgServiceMinutes" data-testid="files-minutes" type="number" min={1} max={240} defaultValue={editing?.avgServiceMinutes??4}/></label>
+   <label>Guichet<input required name="counter" data-testid="files-counter" defaultValue={editing?.counter??''}/></label>
+   <div className="modal-actions"><button type="button" className="btn-light" onClick={()=>setQueueModal(null)}>Annuler</button><button type="submit" className="btn-teal" data-testid="files-submit" disabled={busy}>{busy?'Enregistrement…':'Enregistrer'}</button></div>
+  </form></div>}
+  {scheduleOpen&&schedule!==null&&<ScheduleEditor initial={schedule} onSave={saveSchedule} onClose={()=>setScheduleOpen(false)}/>}
+  {toDelete&&<ConfirmDialog title="Supprimer cette file ?" message={`${toDelete.name} sera supprimée. Une file qui a déjà distribué des tickets ne peut pas être supprimée.`} confirm="Supprimer la file" onClose={()=>setToDelete(null)} onConfirm={removeQueue}/>}
+ </>;
+}
+
 function TenantPage() {
  const [page,setPage]=useState('Tableau de bord');
  const {user}=useAuth();
- const {list,error:listError}=useEstablishments();
+ const {list,error:listError,reload}=useEstablishments();
  const sites=(list??[]).filter(e=>(user?.sites??[]).includes(e.id));
  const [tenant,setTenant]=useState<string|null>(null);
  const active=sites.find(e=>e.id===tenant)??sites[0]??null;
@@ -265,7 +363,9 @@ function TenantPage() {
  {page==='Guichet'&&<Guichet tenant={org.id}/>}
  {page==='Rendez-vous'&&<TenantAppointments key={org.id} org={org}/>}
  {page==='Agents'&&<TenantAgents key={org.id} org={org}/>}
- {!showMockAdminPages&&['Sites','Files','Statistiques','Offre'].includes(page)&&<NonDisponible page={page}/>}
+ {page==='Sites'&&<TenantSites sites={sites} reload={reload}/>}
+ {page==='Files'&&<TenantFiles key={org.id} org={org} reload={reload}/>}
+ {!showMockAdminPages&&['Statistiques','Offre'].includes(page)&&<NonDisponible page={page}/>}
  {showMockAdminPages&&page==='Sites'&&<div className="sites-grid">{['Agence Guéliz','Agence Médina'].map((s,i)=><article className="site-card soft-card" key={s}><div className="site-art" style={{background:i===0?'linear-gradient(135deg,#f9d4bc,#faeee4)':'linear-gradient(135deg,#cde9df,#eaf5ef)'}}><Building2 size={26}/></div><div className="site-card-content"><Pill>{i===0?'Ouvert':'Ouvert'}</Pill><h2>{s}</h2><p><MapPin size={14}/> {i===0?'Guéliz, Marrakech':'Médina, Marrakech'}</p><span>2 files actives · {i===0?'14':'6'} en attente</span><button className="text-link">Gérer ce site <ArrowRight size={14}/></button></div></article>)}</div>}
  {showMockAdminPages&&page==='Files'&&<><div className="sites-grid">{[['Dépôt de dossier','Agence Guéliz','14'],['Retrait de documents','Agence Médina','6']].map((f,i)=><article className="queue-admin-card soft-card" key={f[0]}><div className="queue-admin-head"><span className="queue-option-icon"><FileText size={18}/></span><Pill>Ouverte</Pill><button className="icon-button"><MoreHorizontal size={17}/></button></div><h2>{f[0]}</h2><p>{f[1]} · File {i?'02':'01'}</p><div className="queue-admin-foot"><span><Users size={15}/> {f[2]} en attente</span><span><Clock3 size={15}/> {i?'8':'12'} min moy.</span></div></article>)}</div><section className="schedule-card soft-card"><div className="schedule-head"><div><div className="label">DISPONIBILITÉS</div><h2>Horaires de la semaine</h2></div><button className="icon-button"><Settings2 size={17}/></button></div><div className="schedule-grid"><div className="schedule-days">{['Lun.','Mar.','Mer.','Jeu.','Ven.','Sam.'].map(d=><div key={d}><b>{d}</b><span className="slot-block">08:30–12:30</span><span className="slot-block second">13:30–16:30</span></div>)}</div></div></section></>}
  {showMockAdminPages&&page==='Agents'&&<div className="table-card soft-card"><div className="table-caption"><span>Équipe</span><span>{agents.length} membre{agents.length>1?'s':''}</span></div><table><thead><tr><th>NOM</th><th>RÔLE</th><th>STATUT</th><th>DERNIÈRE ACTIVITÉ</th><th/></tr></thead><tbody>{agents.map(a=><tr key={a}><td><span className="table-avatar">{a.split(' ').map(x=>x[0]).join('')}</span>{a}</td><td>Agent</td><td><Pill>Actif</Pill></td><td>Il y a 4 min</td><td><button className="icon-button"><MoreHorizontal size={16}/></button></td></tr>)}</tbody></table></div>}

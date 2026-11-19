@@ -5,6 +5,9 @@ import ma.ensa.queueservice.web.Views.CounterView;
 import ma.ensa.queueservice.web.Views.EstablishmentCreateRequest;
 import ma.ensa.queueservice.web.Views.EstablishmentUpdateRequest;
 import ma.ensa.queueservice.web.Views.EstablishmentView;
+import ma.ensa.queueservice.web.Views.ScheduleRequest;
+import ma.ensa.queueservice.web.Views.WeeklyHoursRequest;
+import ma.ensa.queueservice.web.Views.WeeklyHoursView;
 import ma.ensa.queueservice.web.Views.QueueRequest;
 import ma.ensa.queueservice.web.Views.QueueView;
 import ma.ensa.queueservice.web.Views.TicketView;
@@ -13,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -28,11 +32,14 @@ public class QueueService {
     private final EstablishmentRepository establishments;
     private final ServiceQueueRepository queues;
     private final TicketRepository tickets;
+    private final WeeklyHoursRepository hours;
 
-    public QueueService(EstablishmentRepository establishments, ServiceQueueRepository queues, TicketRepository tickets) {
+    public QueueService(EstablishmentRepository establishments, ServiceQueueRepository queues,
+                        TicketRepository tickets, WeeklyHoursRepository hours) {
         this.establishments = establishments;
         this.queues = queues;
         this.tickets = tickets;
+        this.hours = hours;
     }
 
     // ---------------------------------------------------------------- establishments
@@ -94,8 +101,57 @@ public class QueueService {
         return toView(establishment);
     }
 
-    public QueueView createQueue(CurrentUser user, String establishmentId, QueueRequest request) {
+    @Transactional(readOnly = true)
+    public List<WeeklyHoursView> schedule(CurrentUser user, String id) {
         user.requireAdmin();
+        Establishment establishment = establishmentEntity(id);
+        user.requireSite(establishment.getOrganizationId());
+        return hours.findByEstablishmentIdOrderByDayOfWeekAscOpensAtAsc(id).stream()
+                .map(QueueService::toView)
+                .toList();
+    }
+
+    /**
+     * Replaces the whole calendar. Intervals are ordered before checking, so an overlap is the
+     * only way two intervals of one day can collide; the database re-checks the range itself.
+     */
+    public List<WeeklyHoursView> replaceSchedule(CurrentUser user, String id, ScheduleRequest request) {
+        user.requireAdmin();
+        Establishment establishment = establishmentEntity(id);
+        user.requireSite(establishment.getOrganizationId());
+
+        var intervals = request.intervals().stream()
+                .sorted(Comparator.comparing(WeeklyHoursRequest::dayOfWeek).thenComparing(WeeklyHoursRequest::opensAt))
+                .toList();
+        int previousDay = -1;
+        LocalTime previousClose = null;
+        for (WeeklyHoursRequest interval : intervals) {
+            LocalTime opensAt = LocalTime.parse(interval.opensAt());
+            LocalTime closesAt = LocalTime.parse(interval.closesAt());
+            if (!opensAt.isBefore(closesAt)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "opensAt must be before closesAt");
+            }
+            if (interval.dayOfWeek() == previousDay && opensAt.isBefore(previousClose)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "opening intervals overlap");
+            }
+            previousDay = interval.dayOfWeek();
+            previousClose = closesAt;
+        }
+
+        hours.deleteByEstablishmentId(id);
+        List<WeeklyHours> saved = hours.saveAll(intervals.stream()
+                .map(interval -> new WeeklyHours(establishment, interval.dayOfWeek().shortValue(),
+                        LocalTime.parse(interval.opensAt()), LocalTime.parse(interval.closesAt())))
+                .toList());
+        return saved.stream().map(QueueService::toView).toList();
+    }
+
+    private static WeeklyHoursView toView(WeeklyHours interval) {
+        return new WeeklyHoursView(interval.getDayOfWeek(), interval.getOpensAt().toString(),
+                interval.getClosesAt().toString());
+    }
+
+    public QueueView createQueue(CurrentUser user, String establishmentId, QueueRequest request) {        user.requireAdmin();
         Establishment establishment = establishmentEntity(establishmentId);
         user.requireSite(establishment.getOrganizationId());
         ServiceQueue queue = new ServiceQueue(establishment, request.name(), request.prefix(),
@@ -271,7 +327,7 @@ public class QueueService {
 
     private QueueView toView(ServiceQueue q) {
         long waiting = tickets.countByQueueIdAndStatus(q.getId(), TicketStatus.WAITING);
-        return new QueueView(q.getId(), q.getName(), q.getPrefix(), q.getCounter(),
+        return new QueueView(q.getId(), q.getName(), q.getPrefix(), q.getCounter(), q.getAvgServiceMinutes(),
                 waiting, waiting * q.getAvgServiceMinutes(), q.isOpen());
     }
 

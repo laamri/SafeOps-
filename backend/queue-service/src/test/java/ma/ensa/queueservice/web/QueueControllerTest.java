@@ -5,6 +5,7 @@ import ma.ensa.queueservice.security.CurrentUserResolver;
 import ma.ensa.queueservice.web.Views.CounterView;
 import ma.ensa.queueservice.web.Views.EstablishmentView;
 import ma.ensa.queueservice.web.Views.QueueView;
+import ma.ensa.queueservice.web.Views.WeeklyHoursView;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
@@ -19,6 +20,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -41,7 +43,7 @@ class QueueControllerTest {
     @Test
     void staffCloseQueueThroughStatusEndpoint() throws Exception {
         when(service.setOpen(any(), eq(1L), eq(false))).thenReturn(new CounterView(
-                new QueueView(1L, "Dépôt de dossier", "A", "Guichet 3", 0, 0, false), null, List.of()));
+                new QueueView(1L, "Dépôt de dossier", "A", "Guichet 3", 4, 0, 0, false), null, List.of()));
 
         mockMvc.perform(put("/api/queues/1/status")
                         .header("X-Auth-Subject", "agent-1")
@@ -101,5 +103,41 @@ class QueueControllerTest {
                 .andExpect(status().isNoContent());
 
         verify(service).deleteQueue(any(), eq(1L));
+    }
+
+    @Test
+    void anAdminReadsAndReplacesTheWeeklySchedule() throws Exception {
+        when(service.schedule(any(), eq("clinic")))
+                .thenReturn(List.of(new WeeklyHoursView(1, "08:30", "16:30")));
+        when(service.replaceSchedule(any(), eq("clinic"), any()))
+                .thenReturn(List.of(new WeeklyHoursView(1, "08:30", "16:30")));
+
+        mockMvc.perform(get("/api/establishments/clinic/hours")
+                        .header("X-Auth-Subject", "admin-1")
+                        .header("X-Auth-Roles", "admin"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].opensAt").value("08:30"));
+
+        mockMvc.perform(put("/api/establishments/clinic/hours")
+                        .header("X-Auth-Subject", "admin-1")
+                        .header("X-Auth-Roles", "admin")
+                        .contentType("application/json")
+                        .content("{\"intervals\":[{\"dayOfWeek\":1,\"opensAt\":\"08:30\",\"closesAt\":\"16:30\"}]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].closesAt").value("16:30"));
+
+        verify(service).replaceSchedule(any(), eq("clinic"), any());
+    }
+
+    @Test
+    void anInvalidScheduleIsRejectedBeforeTheService() throws Exception {
+        mockMvc.perform(put("/api/establishments/clinic/hours")
+                        .header("X-Auth-Subject", "admin-1")
+                        .header("X-Auth-Roles", "admin")
+                        .contentType("application/json")
+                        .content("{\"intervals\":[{\"dayOfWeek\":8,\"opensAt\":\"08:30\",\"closesAt\":\"16:30\"}]}"))
+                .andExpect(status().isBadRequest());
+
+        verify(service, never()).replaceSchedule(any(), any(), any());
     }
 }
