@@ -116,6 +116,13 @@ browser cannot resolve that host.
 - Confirm business services and PostgreSQL have no Ingress and that NetworkPolicies are enforced
   by the selected CNI. An ingress controller does not itself enforce NetworkPolicies.
 
+## Slice 5 TODO
+
+- Add a `staff-admin` Deployment, Service and NetworkPolicy: no Ingress, reachable only from the
+  gateway, with its own `staff-admin-secrets` (Keycloak client id/secret) and the same
+  non-root uid as the compose image. Until then `staff-admin` has no manifest, so kubeconform and
+  the kind smoke test do not cover it.
+
 ## Operational notes
 
 - PostgreSQL is a single-replica StatefulSet with a PVC; use a suitable storage class and backup

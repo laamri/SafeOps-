@@ -44,7 +44,8 @@ public class AuthenticationController {
     public Map<String, String> forwarded(HttpServletRequest request) {
         Map<String, String> forwarded = new LinkedHashMap<>();
         for (String name : List.of(AuthenticatedRequest.SUBJECT, AuthenticatedRequest.USERNAME,
-                AuthenticatedRequest.EMAIL, AuthenticatedRequest.CLIENT, AuthenticatedRequest.ROLES)) {
+                AuthenticatedRequest.EMAIL, AuthenticatedRequest.CLIENT, AuthenticatedRequest.ROLES,
+                AuthenticatedRequest.ORG_IDS, AuthenticatedRequest.SITE_IDS)) {
             forwarded.put(name, request.getHeader(name));
         }
         return forwarded;

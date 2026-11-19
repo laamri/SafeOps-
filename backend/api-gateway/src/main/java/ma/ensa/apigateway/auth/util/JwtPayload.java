@@ -27,6 +27,9 @@ public record JwtPayload(
         String name,
         String preferred_username,
         String email,
+        // Keycloak group paths, e.g. "/tenants/clinic". Array in the token, but the
+        // StringOrSetDeserializer in JwtAdapter also accepts a single string.
+        Set<String> groups,
         // roles, the whole point of the token for a gateway.
         RealmAccess realm_access,
         Map<String, ResourceAccess> resource_access
@@ -34,6 +37,10 @@ public record JwtPayload(
 ) {
     public Set<String> aud() {
         return aud == null ? Set.of() : aud;
+    }
+
+    public Set<String> groups() {
+        return groups == null ? Set.of() : groups;
     }
 
     public Map<String, ResourceAccess> resource_access() {

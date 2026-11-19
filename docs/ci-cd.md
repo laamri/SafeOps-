@@ -8,9 +8,9 @@ smoke environment. Deployments to a real cluster are gated by a manual productio
 | Concern | GitHub Actions | GitLab CI |
 |---|---|---|
 | Pull requests / merge requests and feature branches | CI workflow runs Maven `verify`, frontend `npm ci` / typecheck / build, Docker builds and scans, kubeconform, and kind smoke. | `test`, `build`, and `scan` stages run for merge requests and branch pipelines; the kind smoke and manifests validation are part of `scan`. |
-| Backend parallelism | Matrix: `api-gateway`, `queue-service`, `appointment-service`, `profile-notification-service`. | `parallel:matrix` over the same Maven modules. |
+| Backend parallelism | Matrix: `api-gateway`, `queue-service`, `appointment-service`, `profile-notification-service`, `staff-admin`. | `parallel:matrix` over the same Maven modules. |
 | Frontend | Node 22, npm cache, typecheck, production build. | Node 22, npm cache, typecheck, production build. |
-| Container build and cache | Buildx builds the five runtime images without publishing on CI; GitHub Actions cache stores Maven, npm, and BuildKit layers. | Docker Buildx builds the same five images; Maven, npm, and local BuildKit caches are cached by ref/service. |
+| Container build and cache | Buildx builds every backend image (including the internal `staff-admin`) and the frontend without publishing on CI; GitHub Actions cache stores Maven, npm, and BuildKit layers. | Docker Buildx builds the same images; Maven, npm, and local BuildKit caches are cached by ref/service. |
 | Image scanning | Trivy scans locally built images for unfixed CRITICAL/HIGH OS and library vulnerabilities. | Trivy scans locally built images for unfixed CRITICAL/HIGH OS and library vulnerabilities. |
 | Kubernetes verification | `kubectl kustomize` output is checked with kubeconform; a kind job builds/loads images, applies manifests with ephemeral test credentials, waits for bootstrap and Deployments. | Equivalent kubeconform and kind smoke jobs in the `scan` stage. |
 | `develop` | After the CI workflow succeeds, CD publishes `dev-<sha>` image tags. | Build stage pushes `dev-<sha>` to the GitLab Container Registry. |
@@ -48,3 +48,25 @@ smoke environment. Deployments to a real cluster are gated by a manual productio
 Deploy jobs replace the pod `imagePullSecrets` value with a namespaced `registry-pull` Secret and
 roll the five deployments to the SHA-tagged registry images. Keep registry pull credentials
 read-only and scoped to the target project/package.
+
+`staff-admin` is built and scanned like the other backend images but has no Kubernetes manifest
+yet, so the kind smoke test and the deploy jobs do not include it; it runs in docker compose only.
+
+## Playwright artifacts and credentials
+
+The E2E job uploads `e2e/playwright-report` and `e2e/test-results` on every run. Playwright
+traces are disabled (`trace: 'off'`): a trace stores request headers, including
+`Authorization: Bearer …`, and the Keycloak token response body. Videos are disabled
+(`video: 'off'`) because the failure screenshot already shows the failing page. No HAR is
+recorded. Screenshots remain `only-on-failure`; they show rendered pages only, and the app never
+renders a bearer token.
+
+Before uploading, the job scans both artifact directories and fails if any file contains a
+bearer value or a JWT. The HTML report embeds test source, so the check matches actual values
+(`Authorization: Bearer <20+ chars>` or a three-part `eyJ…` JWT), not the literal helper code.
+Run the same check locally after `bash e2e/run.sh`:
+
+```sh
+grep -ralE 'Authorization: Bearer [A-Za-z0-9._~+/-]{20,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}' \
+  e2e/playwright-report e2e/test-results || echo "no credentials in artifacts"
+```

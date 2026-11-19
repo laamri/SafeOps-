@@ -28,6 +28,7 @@ backend-test:
           - queue-service
           - appointment-service
           - profile-notification-service
+          - staff-admin
   cache:
     key: "maven-$CI_COMMIT_REF_SLUG"
     paths:
@@ -61,7 +62,7 @@ container-build:
   stage: build
   parallel:
     matrix:
-      - SERVICE: [api-gateway, queue-service, appointment-service, profile-notification-service, frontend]
+      - SERVICE: [api-gateway, queue-service, appointment-service, profile-notification-service, staff-admin, frontend]
   cache:
     key: "buildx-$CI_COMMIT_REF_SLUG-$SERVICE"
     paths:
@@ -69,7 +70,7 @@ container-build:
   script:
     - |
       case "$SERVICE" in
-        api-gateway|queue-service|appointment-service|profile-notification-service) CONTEXT="backend/$SERVICE" ;;
+        api-gateway|queue-service|appointment-service|profile-notification-service|staff-admin) CONTEXT="backend/$SERVICE" ;;
         frontend) CONTEXT="frontend" ;;
         *) echo "Unsupported service $SERVICE"; exit 1 ;;
       esac
@@ -113,11 +114,11 @@ container-scan:
   stage: scan
   parallel:
     matrix:
-      - SERVICE: [api-gateway, queue-service, appointment-service, profile-notification-service, frontend]
+      - SERVICE: [api-gateway, queue-service, appointment-service, profile-notification-service, staff-admin, frontend]
   script:
     - |
       case "$SERVICE" in
-        api-gateway|queue-service|appointment-service|profile-notification-service) CONTEXT="backend/$SERVICE" ;;
+        api-gateway|queue-service|appointment-service|profile-notification-service|staff-admin) CONTEXT="backend/$SERVICE" ;;
         frontend) CONTEXT="frontend" ;;
         *) echo "Unsupported service $SERVICE"; exit 1 ;;
       esac

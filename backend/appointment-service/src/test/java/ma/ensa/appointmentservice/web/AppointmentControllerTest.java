@@ -41,7 +41,7 @@ class AppointmentControllerTest {
     void createUsesGatewayIdentityAndReturnsCreatedAppointment() throws Exception {
         UUID id = UUID.fromString("ce9b27c9-52c0-4dd1-9ae3-f62f34f8e98f");
         Instant startsAt = Instant.parse("2099-01-01T10:00:00Z");
-        when(service.create(any(), any())).thenReturn(new AppointmentView(id, "client-1", "clinic",
+        when(service.create(any(), any())).thenReturn(new AppointmentView(id, "client-1", "clinic", "clinic",
                 1L, startsAt, "Consultation", AppointmentStatus.BOOKED, Instant.parse("2026-01-01T10:00:00Z")));
 
         mockMvc.perform(post("/api/appointments")
@@ -54,6 +54,7 @@ class AppointmentControllerTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").value(id.toString()))
                 .andExpect(jsonPath("$.ownerSubject").value("client-1"))
+                .andExpect(jsonPath("$.organizationId").value("clinic"))
                 .andExpect(jsonPath("$.status").value("BOOKED"));
 
         var userCaptor = forClass(CurrentUser.class);
