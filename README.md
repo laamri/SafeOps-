@@ -30,6 +30,8 @@ re-validates every token itself instead of trusting `X-Auth-*`, and reaches Keyc
 through a dedicated service-account client restricted to `view-realm`, `view-users`, and
 `manage-users`.
 
+> Note: For legacy skeleton modules (`eureka-server`, `config-service`) and repository hygiene guidelines, see [docs/legacy-and-hygiene.md](docs/legacy-and-hygiene.md).
+
 ## Run locally
 
 1. Copy `.env.example` to `.env` and replace every `replace-with-...` value with a unique
