@@ -29,6 +29,7 @@ public final class Views {
             UUID id,
             String ownerSubject,
             String establishmentId,
+            String organizationId,
             Long queueId,
             Instant startsAt,
             String reason,

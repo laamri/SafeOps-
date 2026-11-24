@@ -1,0 +1,11 @@
+{
+  "name": "tiko-e2e",
+  "private": true,
+  "description": "Browser end-to-end tests against the Docker stack (no local Node required; run through e2e/run.sh)",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.49.1"
+  }
+}

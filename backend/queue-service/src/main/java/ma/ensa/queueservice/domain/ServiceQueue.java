@@ -1,5 +1,6 @@
 package ma.ensa.queueservice.domain;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
@@ -29,6 +30,10 @@ public class ServiceQueue {
     private String counter;
     private int lastNumber;
 
+    // null on rows created before Slice 1; isOpen() treats null as open until backfill runs.
+    @Column(name = "is_open")
+    private Boolean open;
+
     protected ServiceQueue() {
     }
 
@@ -38,10 +43,34 @@ public class ServiceQueue {
         this.prefix = prefix;
         this.avgServiceMinutes = avgServiceMinutes;
         this.counter = counter;
+        this.open = true;
     }
 
     public int nextNumber() {
         return ++lastNumber;
+    }
+
+    public boolean isOpen() {
+        return open == null || open;
+    }
+
+    public boolean ensureOpen() {
+        if (open == null) {
+            open = true;
+            return true;
+        }
+        return false;
+    }
+
+    public void setOpen(boolean open) {
+        this.open = open;
+    }
+
+    void update(String name, String prefix, int avgServiceMinutes, String counter) {
+        this.name = name;
+        this.prefix = prefix;
+        this.avgServiceMinutes = avgServiceMinutes;
+        this.counter = counter;
     }
 
     public Long getId() { return id; }

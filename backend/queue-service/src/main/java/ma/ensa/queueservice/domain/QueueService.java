@@ -2,7 +2,10 @@ package ma.ensa.queueservice.domain;
 
 import ma.ensa.queueservice.security.CurrentUser;
 import ma.ensa.queueservice.web.Views.CounterView;
+import ma.ensa.queueservice.web.Views.EstablishmentCreateRequest;
+import ma.ensa.queueservice.web.Views.EstablishmentUpdateRequest;
 import ma.ensa.queueservice.web.Views.EstablishmentView;
+import ma.ensa.queueservice.web.Views.QueueRequest;
 import ma.ensa.queueservice.web.Views.QueueView;
 import ma.ensa.queueservice.web.Views.TicketView;
 import org.springframework.http.HttpStatus;
@@ -52,11 +55,87 @@ public class QueueService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown establishment " + id));
     }
 
+    // ---------------------------------------------------------------- administration
+
+    public EstablishmentView createEstablishment(CurrentUser user, EstablishmentCreateRequest request) {
+        user.requireAdmin();
+        // the row only backs a site the caller already holds in the token; it never widens it
+        user.requireSite(request.id());
+        if (establishments.existsById(request.id())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "establishment " + request.id() + " already exists");
+        }
+        Establishment created = new Establishment(request.id(), request.name(), request.category(), request.city(),
+                request.shortName(), request.color(), request.tint(), request.address(), request.opensAt(),
+                request.closesAt(), request.id());
+        return toView(establishments.save(created));
+    }
+
+    public EstablishmentView updateEstablishment(CurrentUser user, String id, EstablishmentUpdateRequest request) {
+        user.requireAdmin();
+        Establishment establishment = establishmentEntity(id);
+        user.requireSite(establishment.getOrganizationId());
+        establishment.updateProfile(request.name(), request.category(), request.city(), request.shortName(),
+                request.color(), request.tint(), request.address(), request.opensAt(), request.closesAt());
+        return toView(establishment);
+    }
+
+    /**
+     * Suspension keeps the data and lets in-flight tickets finish; it only refuses new ones.
+     */
+    public EstablishmentView setEstablishmentActive(CurrentUser user, String id, boolean active) {
+        user.requireAdmin();
+        Establishment establishment = establishmentEntity(id);
+        user.requireSite(establishment.getOrganizationId());
+        if (active) {
+            establishment.reactivate();
+        } else {
+            establishment.suspend();
+        }
+        return toView(establishment);
+    }
+
+    public QueueView createQueue(CurrentUser user, String establishmentId, QueueRequest request) {
+        user.requireAdmin();
+        Establishment establishment = establishmentEntity(establishmentId);
+        user.requireSite(establishment.getOrganizationId());
+        ServiceQueue queue = new ServiceQueue(establishment, request.name(), request.prefix(),
+                request.avgServiceMinutes(), request.counter());
+        return toView(queues.save(queue));
+    }
+
+    public QueueView updateQueue(CurrentUser user, Long queueId, QueueRequest request) {
+        user.requireAdmin();
+        ServiceQueue queue = lockedQueue(queueId);
+        user.requireSite(queue.getEstablishment().getOrganizationId());
+        queue.update(request.name(), request.prefix(), request.avgServiceMinutes(), request.counter());
+        return toView(queue);
+    }
+
+    /**
+     * A queue that already handed out tickets is history; it can be closed, not deleted.
+     * The row lock keeps a ticket from being created between the check and the delete.
+     */
+    public void deleteQueue(CurrentUser user, Long queueId) {
+        user.requireAdmin();
+        ServiceQueue queue = lockedQueue(queueId);
+        user.requireSite(queue.getEstablishment().getOrganizationId());
+        if (tickets.existsByQueueId(queueId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "this queue has tickets; it cannot be deleted");
+        }
+        queues.delete(queue);
+    }
+
     // ---------------------------------------------------------------- client side
 
     public TicketView takeTicket(CurrentUser user, Long queueId) {
         ServiceQueue queue = queues.findByIdForUpdate(queueId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown queue " + queueId));
+        if (!queue.getEstablishment().isActive()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "this establishment is suspended");
+        }
+        if (!queue.isOpen()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "this queue is closed");
+        }
         if (tickets.existsByQueueIdAndOwnerSubjectAndStatusIn(queueId, user.subject(), ACTIVE)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "you already hold a ticket in this queue");
         }
@@ -78,10 +157,7 @@ public class QueueService {
 
     public TicketView cancel(CurrentUser user, UUID id) {
         Ticket ticket = owned(user, id);
-        if (ticket.getStatus() != TicketStatus.WAITING) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "only a waiting ticket can be cancelled");
-        }
-        ticket.close(TicketStatus.CANCELLED);
+        ticket.cancel();
         return toView(ticket);
     }
 
@@ -90,7 +166,9 @@ public class QueueService {
     @Transactional(readOnly = true)
     public CounterView counter(CurrentUser user, Long queueId) {
         user.requireStaff();
-        return counterView(queue(queueId));
+        ServiceQueue queue = queue(queueId);
+        requireSite(user, queue);
+        return counterView(queue);
     }
 
     /**
@@ -100,25 +178,52 @@ public class QueueService {
         user.requireStaff();
         ServiceQueue queue = queues.findByIdForUpdate(queueId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown queue " + queueId));
+        requireSite(user, queue);
+        if (!queue.isOpen()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "this queue is closed");
+        }
         tickets.findByQueueIdAndStatusOrderByNumberAsc(queueId, TicketStatus.CALLED)
-                .forEach(current -> current.close(TicketStatus.SERVED));
+                .forEach(Ticket::serve);
         tickets.findFirstByQueueIdAndStatusOrderByNumberAsc(queueId, TicketStatus.WAITING)
                 .ifPresent(Ticket::call);
         return counterView(queue);
     }
 
-    public CounterView close(CurrentUser user, UUID ticketId, TicketStatus outcome) {
+    public CounterView setOpen(CurrentUser user, Long queueId, boolean open) {
         user.requireStaff();
-        Ticket ticket = tickets.findById(ticketId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown ticket"));
-        if (!ticket.isActive()) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "ticket is already closed");
-        }
-        ticket.close(outcome);
+        ServiceQueue queue = queues.findByIdForUpdate(queueId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown queue " + queueId));
+        requireSite(user, queue);
+        queue.setOpen(open);
+        return counterView(queue);
+    }
+
+    public CounterView serve(CurrentUser user, UUID ticketId) {
+        user.requireStaff();
+        Ticket ticket = ticket(ticketId);
+        requireSite(user, ticket.getQueue());
+        ticket.serve();
+        return counterView(ticket.getQueue());
+    }
+
+    public CounterView noShow(CurrentUser user, UUID ticketId) {
+        user.requireStaff();
+        Ticket ticket = ticket(ticketId);
+        requireSite(user, ticket.getQueue());
+        ticket.noShow();
         return counterView(ticket.getQueue());
     }
 
     // ---------------------------------------------------------------- mapping
+
+    private void requireSite(CurrentUser user, ServiceQueue queue) {
+        user.requireSite(queue.getEstablishment().getOrganizationId());
+    }
+
+    private Ticket ticket(UUID id) {
+        return tickets.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown ticket"));
+    }
 
     private Ticket owned(CurrentUser user, UUID id) {
         return tickets.findById(id)
@@ -129,6 +234,16 @@ public class QueueService {
 
     private ServiceQueue queue(Long id) {
         return queues.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown queue " + id));
+    }
+
+    private Establishment establishmentEntity(String id) {
+        return establishments.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown establishment " + id));
+    }
+
+    private ServiceQueue lockedQueue(Long id) {
+        return queues.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown queue " + id));
     }
 
@@ -150,14 +265,14 @@ public class QueueService {
         long waiting = queueViews.stream().mapToLong(QueueView::waiting).sum();
         long estimate = queueViews.stream().mapToLong(QueueView::estimatedWaitMinutes).max().orElse(0);
         return new EstablishmentView(e.getId(), e.getName(), e.getCategory(), e.getCity(), e.getShortName(),
-                e.getColor(), e.getTint(), e.getAddress(), e.getOpensAt(), e.getClosesAt(),
+                e.getColor(), e.getTint(), e.getAddress(), e.getOpensAt(), e.getClosesAt(), e.isActive(),
                 waiting, estimate, queueViews);
     }
 
     private QueueView toView(ServiceQueue q) {
         long waiting = tickets.countByQueueIdAndStatus(q.getId(), TicketStatus.WAITING);
         return new QueueView(q.getId(), q.getName(), q.getPrefix(), q.getCounter(),
-                waiting, waiting * q.getAvgServiceMinutes());
+                waiting, waiting * q.getAvgServiceMinutes(), q.isOpen());
     }
 
     private TicketView toView(Ticket t) {

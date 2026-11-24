@@ -19,6 +19,8 @@ public interface TicketRepository extends JpaRepository<Ticket, UUID> {
 
     long countByQueueIdAndStatus(Long queueId, TicketStatus status);
 
+    boolean existsByQueueId(Long queueId);
+
     // people still ahead of a waiting ticket
     long countByQueueIdAndStatusAndNumberLessThan(Long queueId, TicketStatus status, int number);
 }
