@@ -19,6 +19,7 @@ public class CurrentUserResolver implements HandlerMethodArgumentResolver {
     static final String SUBJECT = "X-Auth-Subject";
     static final String USERNAME = "X-Auth-Username";
     static final String ROLES = "X-Auth-Roles";
+    static final String SITE_IDS = "X-Auth-Site-Ids";
 
     @Override
     public boolean supportsParameter(MethodParameter parameter) {
@@ -38,6 +39,11 @@ public class CurrentUserResolver implements HandlerMethodArgumentResolver {
                 .map(String::trim)
                 .filter(role -> !role.isEmpty() && !role.contains(":"))
                 .collect(Collectors.toUnmodifiableSet());
-        return new CurrentUser(subject, username == null ? subject : username, realmRoles);
+        String siteIds = request.getHeader(SITE_IDS);
+        Set<String> sites = siteIds == null ? Set.of() : Arrays.stream(siteIds.split(","))
+                .map(String::trim)
+                .filter(site -> !site.isEmpty())
+                .collect(Collectors.toUnmodifiableSet());
+        return new CurrentUser(subject, username == null ? subject : username, realmRoles, sites);
     }
 }
